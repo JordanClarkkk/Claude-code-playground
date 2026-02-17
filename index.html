@@ -18,16 +18,79 @@
     h1 {
       font-size: 4rem;
       color: #333;
-      cursor: default;
+      cursor: pointer;
       transition: color 0.3s;
+      user-select: none;
     }
 
     h1:hover {
       color: red;
     }
+
+    .bouncing {
+      position: absolute;
+      font-size: 2rem;
+      font-family: sans-serif;
+      font-weight: bold;
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
   </style>
 </head>
 <body>
-  <h1>Hello World</h1>
+  <h1 id="main-hello">Hello World</h1>
+
+  <script>
+    const colors = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22'];
+
+    document.getElementById('main-hello').addEventListener('click', function () {
+      this.remove();
+      for (let i = 0; i < 7; i++) {
+        spawnBouncing(colors[i]);
+      }
+    });
+
+    function spawnBouncing(color) {
+      const el = document.createElement('div');
+      el.textContent = 'Hello World';
+      el.className = 'bouncing';
+      el.style.color = color;
+      document.body.appendChild(el);
+
+      const rect = el.getBoundingClientRect();
+      const w = rect.width;
+      const h = rect.height;
+
+      let x = Math.random() * (window.innerWidth - w);
+      let y = Math.random() * (window.innerHeight - h);
+      let vx = (Math.random() * 3 + 2) * (Math.random() < 0.5 ? 1 : -1);
+      let vy = (Math.random() * 3 + 2) * (Math.random() < 0.5 ? 1 : -1);
+
+      el.style.left = x + 'px';
+      el.style.top = y + 'px';
+
+      function animate() {
+        x += vx;
+        y += vy;
+
+        if (x <= 0 || x + w >= window.innerWidth) {
+          vx = -vx;
+          x = Math.max(0, Math.min(x, window.innerWidth - w));
+        }
+        if (y <= 0 || y + h >= window.innerHeight) {
+          vy = -vy;
+          y = Math.max(0, Math.min(y, window.innerHeight - h));
+        }
+
+        el.style.left = x + 'px';
+        el.style.top = y + 'px';
+
+        requestAnimationFrame(animate);
+      }
+
+      requestAnimationFrame(animate);
+    }
+  </script>
 </body>
 </html>
