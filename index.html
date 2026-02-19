@@ -123,6 +123,20 @@
       cursor: pointer; font-size: 1rem; line-height: 1; padding: 0 2px;
     }
     .file-chip .remove:hover { color: var(--error); }
+    .file-chip .badge {
+      font-size: 0.68rem;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+    .file-chip .badge.extracted {
+      background: var(--success-bg);
+      color: var(--success);
+    }
+    .file-chip .badge.pending-badge {
+      background: var(--warning-bg);
+      color: var(--warning);
+    }
 
     /* ── Buttons ──────────────────────────────────── */
     .btn {
@@ -147,7 +161,8 @@
       background: var(--success);
       color: #fff;
     }
-    .btn-success:hover { filter: brightness(1.1); }
+    .btn-success:hover:not(:disabled) { filter: brightness(1.1); }
+    .btn-success:disabled { opacity: 0.45; cursor: not-allowed; }
 
     .action-bar {
       display: flex;
@@ -260,6 +275,75 @@
     }
     tr:hover td { background: var(--surface-hover); }
 
+    /* ── Column Selection ─────────────────────────── */
+    .column-selection { display: none; margin-bottom: 24px; }
+    .column-selection.visible { display: block; }
+    .column-selection .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .column-selection .card-header h2 { font-size: 0.9rem; margin: 0; }
+    .col-toggle-actions { display: flex; gap: 8px; }
+    .col-toggle-actions button {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 0.72rem;
+      padding: 3px 10px;
+      transition: all 0.15s;
+    }
+    .col-toggle-actions button:hover {
+      color: var(--text);
+      border-color: var(--primary);
+    }
+    .columns-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 4px;
+      padding: 16px 20px;
+    }
+    .col-checkbox {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.15s;
+      font-size: 0.82rem;
+    }
+    .col-checkbox:hover { background: var(--surface-hover); }
+    .col-checkbox input[type="checkbox"] {
+      accent-color: var(--primary);
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+    }
+    .col-checkbox .col-name { flex: 1; }
+    .col-checkbox .col-count { color: var(--text-muted); font-size: 0.72rem; }
+
+    /* ── Section Labels ───────────────────────────── */
+    .section-label {
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .extracted-section { display: none; }
+    .extracted-section.visible { display: block; }
+    .merge-results-section { display: none; }
+    .merge-results-section.visible { display: block; }
+
     /* ── Alert ────────────────────────────────────── */
     .alert {
       padding: 14px 18px;
@@ -368,13 +452,19 @@
     </div>
   </div>
 
-  <!-- Action -->
+  <!-- Action Buttons -->
   <div class="action-bar">
     <button class="btn btn-primary" id="extractBtn" disabled>
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
       </svg>
       Extract Products
+    </button>
+    <button class="btn btn-success" id="mergeBtn" disabled>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V15M9 21H5a2 2 0 0 1-2-2V15m0-6h18"/>
+      </svg>
+      Merge to Catalog
     </button>
     <span class="progress-text" id="statusText"></span>
   </div>
@@ -390,28 +480,58 @@
   <!-- Alert -->
   <div class="alert" id="alertBox"></div>
 
-  <!-- Results -->
-  <div class="results-section" id="resultsSection">
-    <h2 style="margin-bottom: 16px; font-size: 1.05rem;">Results</h2>
+  <!-- Extracted Data Section -->
+  <div class="extracted-section" id="extractedSection">
+    <div class="section-label">Extracted Data</div>
 
-    <!-- Stats -->
-    <div class="stats-grid" id="statsGrid"></div>
+    <!-- Extraction Stats -->
+    <div class="stats-grid" id="extractStatsGrid"></div>
 
     <!-- Per-PDF results -->
     <div class="pdf-results" id="pdfResults"></div>
 
-    <!-- Preview Table -->
-    <div class="card" style="padding: 0; overflow: hidden;">
-      <div style="padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
-        <h2 style="font-size: 0.9rem; margin: 0;">Data Preview</h2>
-        <span id="previewNote" style="font-size: 0.75rem; color: var(--text-muted);"></span>
-      </div>
-      <div class="table-wrapper" style="max-height: 420px; overflow-y: auto;">
-        <table id="previewTable"></table>
+    <!-- Column Selection -->
+    <div class="column-selection visible" id="columnSelection">
+      <div class="card" style="padding: 0; overflow: hidden;">
+        <div class="card-header">
+          <h2>Select Columns for Merge</h2>
+          <div class="col-toggle-actions">
+            <button id="selectAllCols">Select All</button>
+            <button id="deselectAllCols">Deselect All</button>
+          </div>
+        </div>
+        <div class="columns-grid" id="columnsGrid"></div>
       </div>
     </div>
 
-    <!-- Download -->
+    <!-- Extracted Data Preview -->
+    <div class="card" style="padding: 0; overflow: hidden;">
+      <div style="padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
+        <h2 style="font-size: 0.9rem; margin: 0;">Extracted Data Preview</h2>
+        <span id="extractPreviewNote" style="font-size: 0.75rem; color: var(--text-muted);"></span>
+      </div>
+      <div class="table-wrapper" style="max-height: 420px; overflow-y: auto;">
+        <table id="extractPreviewTable"></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Merge Results Section -->
+  <div class="merge-results-section" id="mergeResultsSection">
+    <div class="section-label" style="margin-top: 32px;">Merge Results</div>
+
+    <div class="stats-grid" id="mergeStatsGrid"></div>
+
+    <div class="card" style="padding: 0; overflow: hidden;">
+      <div style="padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
+        <h2 style="font-size: 0.9rem; margin: 0;">Merged Catalog Preview</h2>
+        <span id="mergePreviewNote" style="font-size: 0.75rem; color: var(--text-muted);"></span>
+      </div>
+      <div class="table-wrapper" style="max-height: 420px; overflow-y: auto;">
+        <table id="mergePreviewTable"></table>
+      </div>
+    </div>
+
     <div style="margin-top: 20px; text-align: center;">
       <button class="btn btn-success" id="downloadBtn" style="display:none;">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -427,34 +547,29 @@
 </div>
 
 <script>
-// ── State ──────────────────────────────────────────
-let pdfFiles = [];
-let excelFile = null;
+// ── Session State ────────────────────────────────────
+let pdfFiles = [];                    // File objects in the list
+let excelFile = null;                 // Excel File object or null
+let extractedProducts = [];           // All products extracted so far (session)
+let extractedColumns = [];            // Ordered column names discovered
+let selectedColumns = new Set();      // Columns selected for merge
+let extractedPdfNames = new Set();    // PDF filenames already extracted
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
+
+const EXTRACT_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>';
+const MERGE_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V15M9 21H5a2 2 0 0 1-2-2V15m0-6h18"/></svg>';
 
 // ── Drop Zone Helpers ──────────────────────────────
 function setupDropZone(zoneId, inputId, opts) {
   const zone = $(zoneId);
   const input = $(inputId);
-
   zone.addEventListener("click", () => input.click());
-
-  zone.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    zone.classList.add("dragover");
-  });
+  zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("dragover"); });
   zone.addEventListener("dragleave", () => zone.classList.remove("dragover"));
-  zone.addEventListener("drop", (e) => {
-    e.preventDefault();
-    zone.classList.remove("dragover");
-    opts.onFiles([...e.dataTransfer.files]);
-  });
-  input.addEventListener("change", () => {
-    opts.onFiles([...input.files]);
-    input.value = "";
-  });
+  zone.addEventListener("drop", (e) => { e.preventDefault(); zone.classList.remove("dragover"); opts.onFiles([...e.dataTransfer.files]); });
+  input.addEventListener("change", () => { opts.onFiles([...input.files]); input.value = ""; });
 }
 
 function formatSize(bytes) {
@@ -463,36 +578,63 @@ function formatSize(bytes) {
   return (bytes / 1048576).toFixed(1) + " MB";
 }
 
-function renderFileList(listId, files, onRemove) {
-  const el = $(listId);
+function escHTML(s) {
+  const d = document.createElement("div");
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// ── File List Rendering ──────────────────────────────
+function renderPdfFileList() {
+  const el = $("#pdfFileList");
   el.innerHTML = "";
-  files.forEach((f, i) => {
+  pdfFiles.forEach((f, i) => {
+    const done = extractedPdfNames.has(f.name);
     const chip = document.createElement("div");
     chip.className = "file-chip";
     chip.innerHTML = `
-      <span class="name">${f.name}</span>
+      <span class="name">${escHTML(f.name)}</span>
+      <span class="badge ${done ? "extracted" : "pending-badge"}">${done ? "Extracted" : "Pending"}</span>
       <span class="size">${formatSize(f.size)}</span>
-      <button class="remove" data-idx="${i}">&times;</button>
+      <button class="remove">&times;</button>
     `;
     chip.querySelector(".remove").addEventListener("click", (e) => {
       e.stopPropagation();
-      onRemove(i);
+      pdfFiles.splice(i, 1);
+      renderPdfFileList();
+      updateButtons();
     });
     el.appendChild(chip);
   });
 }
 
-// ── Setup ──────────────────────────────────────────
+function renderExcelFileList() {
+  const el = $("#excelFileList");
+  if (!excelFile) { el.innerHTML = ""; return; }
+  el.innerHTML = "";
+  const chip = document.createElement("div");
+  chip.className = "file-chip";
+  chip.innerHTML = `
+    <span class="name">${escHTML(excelFile.name)}</span>
+    <span class="size">${formatSize(excelFile.size)}</span>
+    <button class="remove">&times;</button>
+  `;
+  chip.querySelector(".remove").addEventListener("click", (e) => {
+    e.stopPropagation();
+    excelFile = null;
+    renderExcelFileList();
+    updateButtons();
+  });
+  el.appendChild(chip);
+}
+
+// ── Setup Drop Zones ────────────────────────────────
 setupDropZone("#pdfDropZone", "#pdfInput", {
   onFiles(files) {
     const valid = files.filter(f => f.type === "application/pdf" || f.name.endsWith(".pdf"));
     pdfFiles = [...pdfFiles, ...valid];
-    renderFileList("#pdfFileList", pdfFiles, (i) => {
-      pdfFiles.splice(i, 1);
-      renderFileList("#pdfFileList", pdfFiles, arguments.callee);
-      updateBtn();
-    });
-    updateBtn();
+    renderPdfFileList();
+    updateButtons();
   }
 });
 
@@ -501,108 +643,260 @@ setupDropZone("#excelDropZone", "#excelInput", {
     const valid = files.filter(f => f.name.match(/\.xlsx?$/i));
     if (valid.length) {
       excelFile = valid[0];
-      renderFileList("#excelFileList", [excelFile], () => {
-        excelFile = null;
-        renderFileList("#excelFileList", [], () => {});
-        updateBtn();
-      });
+      renderExcelFileList();
     }
-    updateBtn();
+    updateButtons();
   }
 });
 
-function updateBtn() {
-  $("#extractBtn").disabled = pdfFiles.length === 0;
+// ── Button State ─────────────────────────────────────
+function getNewPdfFiles() {
+  return pdfFiles.filter(f => !extractedPdfNames.has(f.name));
 }
 
-// ── Alert ──────────────────────────────────────────
+function updateButtons() {
+  const newPdfs = getNewPdfFiles();
+  const extractBtn = $("#extractBtn");
+  const mergeBtn = $("#mergeBtn");
+
+  // Extract enabled when there are new (un-extracted) PDFs
+  extractBtn.disabled = newPdfs.length === 0;
+
+  // Dynamic label
+  if (extractedProducts.length > 0 && newPdfs.length > 0) {
+    extractBtn.innerHTML = EXTRACT_SVG + ` Extract New PDFs (${newPdfs.length})`;
+  } else {
+    extractBtn.innerHTML = EXTRACT_SVG + " Extract Products";
+  }
+
+  // Merge enabled when we have extracted products
+  mergeBtn.disabled = extractedProducts.length === 0;
+}
+
+// ── Alert ───────────────────────────────────────────
 function showAlert(msg, type = "error") {
   const box = $("#alertBox");
   box.textContent = msg;
   box.className = `alert visible ${type}`;
 }
-function hideAlert() {
-  $("#alertBox").className = "alert";
-}
+function hideAlert() { $("#alertBox").className = "alert"; }
 
-// ── Progress ───────────────────────────────────────
+// ── Progress ────────────────────────────────────────
 function showProgress(pct, label) {
   $("#progressSection").classList.add("visible");
   $("#progressBar").style.width = pct + "%";
   $("#progressLabel").textContent = label;
 }
-function hideProgress() {
-  $("#progressSection").classList.remove("visible");
-}
+function hideProgress() { $("#progressSection").classList.remove("visible"); }
 
-// ── Extract ────────────────────────────────────────
+// ── Extract (PDF parsing only) ──────────────────────
 $("#extractBtn").addEventListener("click", async () => {
   hideAlert();
-  $("#resultsSection").classList.remove("visible");
 
   const apiKey = $("#apiKey").value.trim();
-  if (!apiKey) {
-    showAlert("Please enter your Anthropic API key above.");
-    return;
-  }
+  if (!apiKey) { showAlert("Please enter your Anthropic API key above."); return; }
+
+  const newPdfs = getNewPdfFiles();
+  if (newPdfs.length === 0) { showAlert("All PDFs have already been extracted."); return; }
 
   const btn = $("#extractBtn");
   btn.disabled = true;
-  btn.textContent = "Processing...";
-
-  showProgress(10, "Uploading files...");
+  btn.textContent = "Extracting...";
+  showProgress(10, "Uploading PDFs...");
 
   const form = new FormData();
-  pdfFiles.forEach(f => form.append("pdfs", f));
-  if (excelFile) form.append("excel", excelFile);
+  newPdfs.forEach(f => form.append("pdfs", f));
 
   try {
-    showProgress(30, "Extracting text from PDFs...");
-
-    const resp = await fetch("/api/parse", {
+    showProgress(30, "Extracting products from PDFs...");
+    const resp = await fetch("/api/extract", {
       method: "POST",
       headers: { "X-API-Key": apiKey },
       body: form,
     });
 
-    showProgress(80, "Building results...");
-
+    showProgress(80, "Processing results...");
     const data = await resp.json();
 
-    if (!resp.ok) {
-      throw new Error(data.detail || "Server error");
+    if (!resp.ok) throw new Error(data.detail || "Server error");
+
+    if (data.total_products === 0) {
+      showAlert("No products could be extracted from the provided PDFs.", "error");
+      renderPdfResults(data.pdf_results || []);
+      showProgress(100, "Done");
+      setTimeout(hideProgress, 600);
+      updateButtons();
+      return;
     }
 
-    if (data.error && data.total_products === 0) {
-      showAlert(data.error, "error");
-      hideProgress();
-      btn.disabled = false;
-      btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> Extract Products`;
-      return;
+    // Mark these PDFs as extracted
+    newPdfs.forEach(f => extractedPdfNames.add(f.name));
+
+    // Accumulate products
+    extractedProducts = [...extractedProducts, ...data.products];
+
+    // Merge column lists preserving order
+    const existingColSet = new Set(extractedColumns);
+    for (const col of data.columns) {
+      if (!existingColSet.has(col)) {
+        extractedColumns.push(col);
+        existingColSet.add(col);
+        selectedColumns.add(col);  // select new columns by default
+      }
     }
 
     showProgress(100, "Done!");
     setTimeout(hideProgress, 600);
 
-    renderResults(data);
+    renderExtractedSection(data.pdf_results || []);
+    renderPdfFileList();
+    updateButtons();
 
   } catch (err) {
     showAlert(err.message);
     hideProgress();
   } finally {
     btn.disabled = false;
-    btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> Extract Products`;
+    updateButtons();
   }
 });
 
-// ── Render Results ─────────────────────────────────
-function renderResults(data) {
-  $("#resultsSection").classList.add("visible");
+// ── Render Extracted Section ────────────────────────
+function renderExtractedSection(pdfResults) {
+  $("#extractedSection").classList.add("visible");
 
   // Stats
+  $("#extractStatsGrid").innerHTML = [
+    { value: extractedProducts.length, label: "Total Products", cls: "primary" },
+    { value: extractedColumns.length, label: "Total Columns", cls: "primary" },
+    { value: extractedPdfNames.size, label: "PDFs Processed", cls: "success" },
+  ].map(s => `
+    <div class="stat-card ${s.cls}">
+      <div class="value">${s.value}</div>
+      <div class="label">${s.label}</div>
+    </div>
+  `).join("");
+
+  renderPdfResults(pdfResults);
+  renderColumnSelection();
+  renderExtractedPreview();
+}
+
+function renderPdfResults(pdfResults) {
+  $("#pdfResults").innerHTML = pdfResults.map(r => `
+    <div class="pdf-result">
+      <span class="status-dot ${r.status}"></span>
+      <span class="fname">${escHTML(r.filename)}</span>
+      <span class="detail">${r.status === "success" ? r.products_found + " products found" : escHTML(r.message || "")}</span>
+    </div>
+  `).join("");
+}
+
+function renderColumnSelection() {
+  const grid = $("#columnsGrid");
+
+  // Count how many products have each column
+  const colCounts = {};
+  for (const col of extractedColumns) {
+    colCounts[col] = 0;
+    for (const p of extractedProducts) {
+      if (p[col] !== undefined && p[col] !== null && p[col] !== "") colCounts[col]++;
+    }
+  }
+
+  grid.innerHTML = extractedColumns.map(col => `
+    <label class="col-checkbox">
+      <input type="checkbox" value="${escHTML(col)}" ${selectedColumns.has(col) ? "checked" : ""}>
+      <span class="col-name">${escHTML(col)}</span>
+      <span class="col-count">${colCounts[col]}/${extractedProducts.length}</span>
+    </label>
+  `).join("");
+
+  grid.querySelectorAll("input[type=checkbox]").forEach(cb => {
+    cb.addEventListener("change", () => {
+      if (cb.checked) selectedColumns.add(cb.value);
+      else selectedColumns.delete(cb.value);
+      updateButtons();
+    });
+  });
+
+  $("#selectAllCols").onclick = () => {
+    extractedColumns.forEach(c => selectedColumns.add(c));
+    grid.querySelectorAll("input[type=checkbox]").forEach(cb => cb.checked = true);
+    updateButtons();
+  };
+  $("#deselectAllCols").onclick = () => {
+    selectedColumns.clear();
+    grid.querySelectorAll("input[type=checkbox]").forEach(cb => cb.checked = false);
+    updateButtons();
+  };
+}
+
+function renderExtractedPreview() {
+  const cols = extractedColumns;
+  const rows = extractedProducts.slice(0, 20);
+  let html = "<thead><tr>";
+  cols.forEach(c => { html += `<th>${escHTML(c)}</th>`; });
+  html += "</tr></thead><tbody>";
+  rows.forEach(row => {
+    html += "<tr>";
+    cols.forEach(c => { html += `<td title="${escHTML(String(row[c] ?? ""))}">${escHTML(String(row[c] ?? ""))}</td>`; });
+    html += "</tr>";
+  });
+  html += "</tbody>";
+  $("#extractPreviewTable").innerHTML = html;
+  $("#extractPreviewNote").textContent = `Showing ${rows.length} of ${extractedProducts.length} products`;
+}
+
+// ── Merge ──────────────────────────────────────────
+$("#mergeBtn").addEventListener("click", async () => {
+  hideAlert();
+
+  if (extractedProducts.length === 0) { showAlert("No extracted data to merge. Extract products first."); return; }
+  if (selectedColumns.size === 0) { showAlert("No columns selected. Please select at least one column."); return; }
+
+  const btn = $("#mergeBtn");
+  btn.disabled = true;
+  btn.textContent = "Merging...";
+  showProgress(10, "Preparing merge...");
+
+  const form = new FormData();
+  form.append("payload", JSON.stringify({
+    products: extractedProducts,
+    selected_columns: [...selectedColumns],
+  }));
+  if (excelFile) form.append("excel", excelFile);
+
+  try {
+    showProgress(50, "Merging products with catalog...");
+    const resp = await fetch("/api/merge", { method: "POST", body: form });
+
+    showProgress(80, "Building Excel file...");
+    const data = await resp.json();
+
+    if (!resp.ok) throw new Error(data.detail || "Server error");
+
+    showProgress(100, "Done!");
+    setTimeout(hideProgress, 600);
+    renderMergeResults(data);
+
+  } catch (err) {
+    showAlert(err.message);
+    hideProgress();
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = MERGE_SVG + " Merge to Catalog";
+    updateButtons();
+  }
+});
+
+// ── Render Merge Results ────────────────────────────
+function renderMergeResults(data) {
+  $("#mergeResultsSection").classList.add("visible");
+
   const stats = data.stats || {};
-  const statsHTML = [
-    { value: data.total_products, label: "Products Extracted", cls: "primary" },
+  $("#mergeStatsGrid").innerHTML = [
+    { value: data.total_rows, label: "Total Rows", cls: "primary" },
     { value: stats.matched || 0, label: "Matched Existing", cls: "success" },
     { value: stats.added || 0, label: "New Rows Added", cls: "warning" },
     { value: (stats.new_columns || []).length, label: "New Columns", cls: "primary" },
@@ -612,51 +906,28 @@ function renderResults(data) {
       <div class="label">${s.label}</div>
     </div>
   `).join("");
-  $("#statsGrid").innerHTML = statsHTML;
 
-  // PDF results
-  const pdfHTML = (data.pdf_results || []).map(r => `
-    <div class="pdf-result">
-      <span class="status-dot ${r.status}"></span>
-      <span class="fname">${r.filename}</span>
-      <span class="detail">${r.status === "success" ? r.products_found + " products found" : r.message}</span>
-    </div>
-  `).join("");
-  $("#pdfResults").innerHTML = pdfHTML;
-
-  // Table preview
   const cols = data.columns || [];
   const newCols = new Set(stats.new_columns || []);
   const rows = data.preview || [];
 
-  let tableHTML = "<thead><tr>";
-  cols.forEach(c => {
-    tableHTML += `<th class="${newCols.has(c) ? "new-col" : ""}">${escHTML(c)}</th>`;
-  });
-  tableHTML += "</tr></thead><tbody>";
+  let html = "<thead><tr>";
+  cols.forEach(c => { html += `<th class="${newCols.has(c) ? "new-col" : ""}">${escHTML(c)}</th>`; });
+  html += "</tr></thead><tbody>";
   rows.forEach(row => {
-    tableHTML += "<tr>";
-    cols.forEach(c => {
-      tableHTML += `<td title="${escHTML(String(row[c] ?? ""))}">${escHTML(String(row[c] ?? ""))}</td>`;
-    });
-    tableHTML += "</tr>";
+    html += "<tr>";
+    cols.forEach(c => { html += `<td title="${escHTML(String(row[c] ?? ""))}">${escHTML(String(row[c] ?? ""))}</td>`; });
+    html += "</tr>";
   });
-  tableHTML += "</tbody>";
-  $("#previewTable").innerHTML = tableHTML;
-  $("#previewNote").textContent = `Showing ${rows.length} of ${data.total_rows} rows`;
+  html += "</tbody>";
+  $("#mergePreviewTable").innerHTML = html;
+  $("#mergePreviewNote").textContent = `Showing ${rows.length} of ${data.total_rows} rows`;
 
-  // Download button
   if (data.download_url) {
     const dlBtn = $("#downloadBtn");
     dlBtn.style.display = "inline-flex";
     dlBtn.onclick = () => window.open(data.download_url, "_blank");
   }
-}
-
-function escHTML(s) {
-  const d = document.createElement("div");
-  d.textContent = s;
-  return d.innerHTML;
 }
 </script>
 
