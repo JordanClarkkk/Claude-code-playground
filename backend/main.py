@@ -5,11 +5,12 @@ import uuid
 import json
 import traceback
 from pathlib import Path
+from typing import Optional
 
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, UploadFile, File, Form, Header, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -38,29 +39,17 @@ FRONTEND_DIR = Path(__file__).resolve().parent.parent
 
 # ── API Routes ────────────────────────────────────────────────────────────────
 
-@app.post("/api/parse")
-async def parse_pdfs(
+@app.post("/api/extract")
+async def extract_from_pdfs(
     pdfs: list[UploadFile] = File(...),
-    excel: UploadFile | None = File(None),
     x_api_key: str | None = Header(None),
 ):
-    """Parse one or more PDFs, extract products, merge with optional Excel catalog."""
-    # Use per-request API key from header, fall back to env var
+    """Extract products from PDFs without merging. Returns raw product data."""
     api_key = x_api_key or os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         raise HTTPException(400, "No API key provided. Pass it via the UI or set ANTHROPIC_API_KEY env var.")
     set_api_key(api_key)
 
-    job_id = uuid.uuid4().hex[:12]
-
-    # 1. Read existing Excel catalog (if provided)
-    existing_columns: list[str] = []
-    existing_rows: list[dict] = []
-    if excel:
-        excel_bytes = await excel.read()
-        existing_columns, existing_rows = read_catalog(excel_bytes)
-
-    # 2. Parse each PDF and extract products
     all_products: list[dict] = []
     pdf_results: list[dict] = []
 
@@ -79,13 +68,12 @@ async def parse_pdfs(
                 })
                 continue
 
-            products = extract_products(text, existing_columns, filename)
+            products = extract_products(text, [], filename)
             all_products.extend(products)
             pdf_results.append({
                 "filename": filename,
                 "status": "success",
                 "products_found": len(products),
-                "text_length": len(text),
             })
         except Exception as e:
             traceback.print_exc()
@@ -96,25 +84,75 @@ async def parse_pdfs(
                 "products_found": 0,
             })
 
-    if not all_products:
-        return JSONResponse({
-            "job_id": job_id,
-            "pdf_results": pdf_results,
-            "total_products": 0,
-            "error": "No products could be extracted from the provided PDFs.",
-        }, status_code=200)
+    # Discover all columns across products
+    columns: list[str] = []
+    seen: set[str] = set()
+    for p in all_products:
+        for k in p.keys():
+            if k not in seen:
+                columns.append(k)
+                seen.add(k)
 
-    # 3. Merge with existing catalog
+    return {
+        "pdf_results": pdf_results,
+        "products": all_products,
+        "columns": columns,
+        "total_products": len(all_products),
+    }
+
+
+@app.post("/api/merge")
+async def merge_to_catalog(
+    request: Request,
+    excel: UploadFile | None = File(None),
+):
+    """Merge extracted products into a catalog with column selection."""
+    # Parse the JSON payload from the 'payload' form field
+    form = await request.form()
+    payload_raw = form.get("payload")
+    if not payload_raw:
+        raise HTTPException(400, "Missing 'payload' field with products and column selection.")
+
+    try:
+        payload = json.loads(payload_raw)
+    except json.JSONDecodeError:
+        raise HTTPException(400, "Invalid JSON in 'payload' field.")
+
+    products: list[dict] = payload.get("products", [])
+    selected_columns: list[str] = payload.get("selected_columns", [])
+
+    if not products:
+        raise HTTPException(400, "No products to merge.")
+
+    # Filter products to only include selected columns
+    if selected_columns:
+        selected_set = set(selected_columns)
+        filtered = []
+        for p in products:
+            filtered.append({k: v for k, v in p.items() if k in selected_set})
+        products = filtered
+
+    # Read existing Excel catalog if provided
+    excel_file = form.get("excel")
+    existing_columns: list[str] = []
+    existing_rows: list[dict] = []
+    if excel_file and hasattr(excel_file, "read"):
+        excel_bytes = await excel_file.read()
+        if excel_bytes:
+            existing_columns, existing_rows = read_catalog(excel_bytes)
+
+    # Merge
     final_columns, merged_rows, stats = merge_products(
-        existing_columns, existing_rows, all_products,
+        existing_columns, existing_rows, products,
     )
 
-    # 4. Write output Excel
+    # Write output Excel
+    job_id = uuid.uuid4().hex[:12]
     output_bytes = write_catalog(final_columns, merged_rows, stats["new_columns"])
     output_path = OUTPUT_DIR / f"catalog_{job_id}.xlsx"
     output_path.write_bytes(output_bytes)
 
-    # 5. Build preview (first 20 rows)
+    # Build preview (first 20 rows)
     preview_rows = merged_rows[:20]
     preview = [
         {col: row.get(col, "") for col in final_columns}
@@ -123,8 +161,6 @@ async def parse_pdfs(
 
     return {
         "job_id": job_id,
-        "pdf_results": pdf_results,
-        "total_products": len(all_products),
         "stats": stats,
         "columns": final_columns,
         "preview": preview,
