@@ -275,19 +275,19 @@
     }
     tr:hover td { background: var(--surface-hover); }
 
-    /* ── Column Selection ─────────────────────────── */
-    .column-selection { display: none; margin-bottom: 24px; }
-    .column-selection.visible { display: block; }
-    .column-selection .card-header {
+    /* ── Column Mapping ────────────────────────────── */
+    .column-mapping { display: none; margin-bottom: 24px; }
+    .column-mapping.visible { display: block; }
+    .column-mapping .card-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
       padding: 16px 20px;
       border-bottom: 1px solid var(--border);
     }
-    .column-selection .card-header h2 { font-size: 0.9rem; margin: 0; }
-    .col-toggle-actions { display: flex; gap: 8px; }
-    .col-toggle-actions button {
+    .column-mapping .card-header h2 { font-size: 0.9rem; margin: 0; }
+    .mapping-actions { display: flex; gap: 8px; }
+    .mapping-actions button {
       background: none;
       border: 1px solid var(--border);
       border-radius: 4px;
@@ -297,35 +297,99 @@
       padding: 3px 10px;
       transition: all 0.15s;
     }
-    .col-toggle-actions button:hover {
+    .mapping-actions button:hover {
       color: var(--text);
       border-color: var(--primary);
     }
-    .columns-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 4px;
-      padding: 16px 20px;
-    }
-    .col-checkbox {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 10px;
-      border-radius: 6px;
-      cursor: pointer;
-      transition: background 0.15s;
+    .mapping-table {
+      width: 100%;
+      border-collapse: collapse;
       font-size: 0.82rem;
     }
-    .col-checkbox:hover { background: var(--surface-hover); }
-    .col-checkbox input[type="checkbox"] {
-      accent-color: var(--primary);
-      width: 16px;
-      height: 16px;
+    .mapping-table th {
+      background: #1f2333;
+      color: var(--text);
+      font-weight: 600;
+      padding: 10px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      position: static;
+    }
+    .mapping-table td {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+      max-width: none;
+      white-space: normal;
+      overflow: visible;
+    }
+    .mapping-table tr:hover td { background: var(--surface-hover); }
+    .mapping-from {
+      font-weight: 600;
+    }
+    .mapping-samples {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .mapping-arrow {
+      color: var(--text-muted);
+      text-align: center;
+      font-size: 1.1rem;
+    }
+    .mapping-select {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 7px 10px;
+      color: var(--text);
+      font-size: 0.82rem;
       cursor: pointer;
     }
-    .col-checkbox .col-name { flex: 1; }
-    .col-checkbox .col-count { color: var(--text-muted); font-size: 0.72rem; }
+    .mapping-select:focus {
+      outline: none;
+      border-color: var(--border-active);
+    }
+    .mapping-select option { background: var(--bg); color: var(--text); }
+    .mapping-select.matched { border-color: var(--success); }
+    .mapping-select.new-col { border-color: var(--warning); }
+    .mapping-select.skipped { border-color: var(--error); opacity: 0.6; }
+    .catalog-samples {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      margin-top: 4px;
+      min-height: 16px;
+    }
+    .mapping-legend {
+      display: flex;
+      gap: 16px;
+      padding: 12px 20px;
+      border-top: 1px solid var(--border);
+      font-size: 0.72rem;
+      color: var(--text-muted);
+    }
+    .legend-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 4px;
+    }
+    .legend-dot.matched { background: var(--success); }
+    .legend-dot.new { background: var(--warning); }
+    .legend-dot.skipped { background: var(--error); }
+    .mapping-confirm-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-top: 1px solid var(--border);
+    }
+    .mapping-summary {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
 
     /* ── Section Labels ───────────────────────────── */
     .section-label {
@@ -490,17 +554,38 @@
     <!-- Per-PDF results -->
     <div class="pdf-results" id="pdfResults"></div>
 
-    <!-- Column Selection -->
-    <div class="column-selection visible" id="columnSelection">
+    <!-- Column Mapping (shown when merge is triggered) -->
+    <div class="column-mapping" id="columnMapping">
       <div class="card" style="padding: 0; overflow: hidden;">
         <div class="card-header">
-          <h2>Select Columns for Merge</h2>
-          <div class="col-toggle-actions">
-            <button id="selectAllCols">Select All</button>
-            <button id="deselectAllCols">Deselect All</button>
+          <h2>Map Columns to Catalog</h2>
+          <div class="mapping-actions">
+            <button id="autoMatchBtn">Auto-Match</button>
+            <button id="skipAllUnmatchedBtn">Skip Unmapped</button>
           </div>
         </div>
-        <div class="columns-grid" id="columnsGrid"></div>
+        <div style="overflow-x: auto;">
+          <table class="mapping-table">
+            <thead>
+              <tr>
+                <th style="width:30%">Extracted Column</th>
+                <th style="width:5%"></th>
+                <th style="width:35%">Maps To</th>
+                <th style="width:30%">Catalog Samples</th>
+              </tr>
+            </thead>
+            <tbody id="mappingBody"></tbody>
+          </table>
+        </div>
+        <div class="mapping-legend">
+          <span><span class="legend-dot matched"></span> Mapped to existing</span>
+          <span><span class="legend-dot new"></span> Add as new column</span>
+          <span><span class="legend-dot skipped"></span> Skip</span>
+        </div>
+        <div class="mapping-confirm-bar">
+          <span class="mapping-summary" id="mappingSummary"></span>
+          <button class="btn btn-success" id="confirmMergeBtn">Confirm &amp; Merge</button>
+        </div>
       </div>
     </div>
 
@@ -552,8 +637,10 @@ let pdfFiles = [];                    // File objects in the list
 let excelFile = null;                 // Excel File object or null
 let extractedProducts = [];           // All products extracted so far (session)
 let extractedColumns = [];            // Ordered column names discovered
-let selectedColumns = new Set();      // Columns selected for merge
 let extractedPdfNames = new Set();    // PDF filenames already extracted
+let catalogColumns = [];              // Columns from the uploaded Excel catalog
+let catalogSamples = {};              // {col: [sample1, sample2, ...]}
+let columnMapping = {};               // {extractedCol: catalogCol | "__new__" | "__skip__"}
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
@@ -741,7 +828,6 @@ $("#extractBtn").addEventListener("click", async () => {
       if (!existingColSet.has(col)) {
         extractedColumns.push(col);
         existingColSet.add(col);
-        selectedColumns.add(col);  // select new columns by default
       }
     }
 
@@ -778,7 +864,6 @@ function renderExtractedSection(pdfResults) {
   `).join("");
 
   renderPdfResults(pdfResults);
-  renderColumnSelection();
   renderExtractedPreview();
 }
 
@@ -792,10 +877,46 @@ function renderPdfResults(pdfResults) {
   `).join("");
 }
 
-function renderColumnSelection() {
-  const grid = $("#columnsGrid");
+// ── Auto-Match Logic ─────────────────────────────────
+function normalizeForMatch(s) {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
 
-  // Count how many products have each column
+function autoMatchColumns() {
+  columnMapping = {};
+  const catalogNorm = {};
+  for (const cc of catalogColumns) {
+    catalogNorm[normalizeForMatch(cc)] = cc;
+  }
+
+  for (const ec of extractedColumns) {
+    const ecNorm = normalizeForMatch(ec);
+    // Exact normalized match
+    if (catalogNorm[ecNorm]) {
+      columnMapping[ec] = catalogNorm[ecNorm];
+      continue;
+    }
+    // Substring match: catalog contains extracted or vice versa
+    let found = false;
+    for (const cc of catalogColumns) {
+      const ccNorm = normalizeForMatch(cc);
+      if (ccNorm.includes(ecNorm) || ecNorm.includes(ccNorm)) {
+        columnMapping[ec] = cc;
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      columnMapping[ec] = "__new__";
+    }
+  }
+}
+
+// ── Render Column Mapping ────────────────────────────
+function renderColumnMapping() {
+  const body = $("#mappingBody");
+
+  // Count how many products have each extracted column
   const colCounts = {};
   for (const col of extractedColumns) {
     colCounts[col] = 0;
@@ -804,32 +925,105 @@ function renderColumnSelection() {
     }
   }
 
-  grid.innerHTML = extractedColumns.map(col => `
-    <label class="col-checkbox">
-      <input type="checkbox" value="${escHTML(col)}" ${selectedColumns.has(col) ? "checked" : ""}>
-      <span class="col-name">${escHTML(col)}</span>
-      <span class="col-count">${colCounts[col]}/${extractedProducts.length}</span>
-    </label>
-  `).join("");
+  // Build extracted column sample values
+  const extractedSamples = {};
+  for (const col of extractedColumns) {
+    const vals = [];
+    for (const p of extractedProducts) {
+      const v = p[col];
+      if (v !== undefined && v !== null && String(v).trim()) {
+        vals.push(String(v).trim());
+        if (vals.length >= 2) break;
+      }
+    }
+    extractedSamples[col] = vals;
+  }
 
-  grid.querySelectorAll("input[type=checkbox]").forEach(cb => {
-    cb.addEventListener("change", () => {
-      if (cb.checked) selectedColumns.add(cb.value);
-      else selectedColumns.delete(cb.value);
-      updateButtons();
+  body.innerHTML = extractedColumns.map(ec => {
+    const current = columnMapping[ec] || "__new__";
+    const samples = extractedSamples[ec] || [];
+    const samplesText = samples.length ? samples.map(s => `"${s}"`).join(", ") : "—";
+    const count = colCounts[ec] || 0;
+
+    let options = "";
+    // Catalog column options
+    for (const cc of catalogColumns) {
+      const sel = current === cc ? "selected" : "";
+      options += `<option value="${escHTML(cc)}" ${sel}>${escHTML(cc)}</option>`;
+    }
+
+    return `
+      <tr data-col="${escHTML(ec)}">
+        <td>
+          <div class="mapping-from">${escHTML(ec)}</div>
+          <div class="mapping-samples">${count}/${extractedProducts.length} rows · ${samplesText}</div>
+        </td>
+        <td class="mapping-arrow">&rarr;</td>
+        <td>
+          <select class="mapping-select ${current === "__skip__" ? "skipped" : current === "__new__" ? "new-col" : "matched"}" data-extracted="${escHTML(ec)}">
+            <optgroup label="Catalog Columns">
+              ${options}
+            </optgroup>
+            <optgroup label="Other">
+              <option value="__new__" ${current === "__new__" ? "selected" : ""}>+ Add as new column</option>
+              <option value="__skip__" ${current === "__skip__" ? "selected" : ""}>✕ Skip this column</option>
+            </optgroup>
+          </select>
+        </td>
+        <td>
+          <div class="catalog-samples" id="catSample_${escHTML(ec).replace(/\s/g, "_")}"></div>
+        </td>
+      </tr>
+    `;
+  }).join("");
+
+  // Attach change listeners
+  body.querySelectorAll(".mapping-select").forEach(sel => {
+    sel.addEventListener("change", () => {
+      const ec = sel.dataset.extracted;
+      columnMapping[ec] = sel.value;
+      sel.className = "mapping-select " + (sel.value === "__skip__" ? "skipped" : sel.value === "__new__" ? "new-col" : "matched");
+      updateCatalogSample(ec, sel.value);
+      updateMappingSummary();
     });
+    // Initial catalog sample
+    const ec = sel.dataset.extracted;
+    updateCatalogSample(ec, sel.value);
   });
 
-  $("#selectAllCols").onclick = () => {
-    extractedColumns.forEach(c => selectedColumns.add(c));
-    grid.querySelectorAll("input[type=checkbox]").forEach(cb => cb.checked = true);
-    updateButtons();
+  updateMappingSummary();
+
+  // Button handlers
+  $("#autoMatchBtn").onclick = () => { autoMatchColumns(); renderColumnMapping(); };
+  $("#skipAllUnmatchedBtn").onclick = () => {
+    for (const ec of extractedColumns) {
+      if (columnMapping[ec] === "__new__") columnMapping[ec] = "__skip__";
+    }
+    renderColumnMapping();
   };
-  $("#deselectAllCols").onclick = () => {
-    selectedColumns.clear();
-    grid.querySelectorAll("input[type=checkbox]").forEach(cb => cb.checked = false);
-    updateButtons();
-  };
+}
+
+function updateCatalogSample(extractedCol, catalogCol) {
+  const id = "catSample_" + extractedCol.replace(/\s/g, "_");
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (catalogCol === "__new__" || catalogCol === "__skip__") {
+    el.textContent = "";
+    return;
+  }
+  const samples = catalogSamples[catalogCol] || [];
+  el.textContent = samples.length ? samples.map(s => `"${s}"`).join(", ") : "—";
+}
+
+function updateMappingSummary() {
+  let mapped = 0, newCols = 0, skipped = 0;
+  for (const ec of extractedColumns) {
+    const target = columnMapping[ec] || "__new__";
+    if (target === "__skip__") skipped++;
+    else if (target === "__new__") newCols++;
+    else mapped++;
+  }
+  $("#mappingSummary").textContent = `${mapped} mapped, ${newCols} new, ${skipped} skipped`;
 }
 
 function renderExtractedPreview() {
@@ -848,30 +1042,80 @@ function renderExtractedPreview() {
   $("#extractPreviewNote").textContent = `Showing ${rows.length} of ${extractedProducts.length} products`;
 }
 
-// ── Merge ──────────────────────────────────────────
+// ── Merge (2-step: mapping review → confirm) ────────
 $("#mergeBtn").addEventListener("click", async () => {
   hideAlert();
 
   if (extractedProducts.length === 0) { showAlert("No extracted data to merge. Extract products first."); return; }
-  if (selectedColumns.size === 0) { showAlert("No columns selected. Please select at least one column."); return; }
+
+  const btn = $("#mergeBtn");
+
+  // If there's an Excel catalog, fetch its columns and show mapping UI
+  if (excelFile) {
+    btn.disabled = true;
+    btn.textContent = "Reading catalog...";
+    showProgress(20, "Reading catalog columns...");
+
+    try {
+      const form = new FormData();
+      form.append("excel", excelFile);
+      const resp = await fetch("/api/catalog-columns", { method: "POST", body: form });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || "Failed to read catalog columns.");
+
+      catalogColumns = data.columns || [];
+      catalogSamples = data.samples || {};
+
+      hideProgress();
+
+      // Auto-match and show mapping UI
+      autoMatchColumns();
+      $("#columnMapping").classList.add("visible");
+      renderColumnMapping();
+
+    } catch (err) {
+      showAlert(err.message);
+      hideProgress();
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = MERGE_SVG + " Merge to Catalog";
+      updateButtons();
+    }
+  } else {
+    // No catalog — just merge directly (all columns are new)
+    columnMapping = {};
+    for (const ec of extractedColumns) columnMapping[ec] = "__new__";
+    executeMerge();
+  }
+});
+
+// ── Confirm Merge (from mapping UI) ─────────────────
+$("#confirmMergeBtn").addEventListener("click", () => executeMerge());
+
+async function executeMerge() {
+  hideAlert();
+
+  // Check that at least one column is not skipped
+  const hasAny = extractedColumns.some(ec => columnMapping[ec] !== "__skip__");
+  if (!hasAny) { showAlert("All columns are skipped. Map or add at least one column."); return; }
 
   const btn = $("#mergeBtn");
   btn.disabled = true;
   btn.textContent = "Merging...";
-  showProgress(10, "Preparing merge...");
+  showProgress(30, "Merging products with catalog...");
 
   const form = new FormData();
   form.append("payload", JSON.stringify({
     products: extractedProducts,
-    selected_columns: [...selectedColumns],
+    column_mapping: columnMapping,
   }));
   if (excelFile) form.append("excel", excelFile);
 
   try {
-    showProgress(50, "Merging products with catalog...");
+    showProgress(60, "Building Excel file...");
     const resp = await fetch("/api/merge", { method: "POST", body: form });
 
-    showProgress(80, "Building Excel file...");
+    showProgress(90, "Finalizing...");
     const data = await resp.json();
 
     if (!resp.ok) throw new Error(data.detail || "Server error");
@@ -888,7 +1132,7 @@ $("#mergeBtn").addEventListener("click", async () => {
     btn.innerHTML = MERGE_SVG + " Merge to Catalog";
     updateButtons();
   }
-});
+}
 
 // ── Render Merge Results ────────────────────────────
 function renderMergeResults(data) {

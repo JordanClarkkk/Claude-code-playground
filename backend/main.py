@@ -101,17 +101,46 @@ async def extract_from_pdfs(
     }
 
 
+@app.post("/api/catalog-columns")
+async def catalog_columns(
+    excel: UploadFile = File(...),
+):
+    """Read an Excel catalog and return its column names with sample values."""
+    excel_bytes = await excel.read()
+    if not excel_bytes:
+        raise HTTPException(400, "Empty Excel file.")
+
+    columns, rows = read_catalog(excel_bytes)
+
+    # Build sample values (up to 3 non-empty values per column)
+    samples: dict[str, list[str]] = {}
+    for col in columns:
+        vals = []
+        for row in rows:
+            v = row.get(col)
+            if v is not None and str(v).strip():
+                vals.append(str(v).strip())
+                if len(vals) >= 3:
+                    break
+        samples[col] = vals
+
+    return {
+        "columns": columns,
+        "samples": samples,
+        "total_rows": len(rows),
+    }
+
+
 @app.post("/api/merge")
 async def merge_to_catalog(
     request: Request,
     excel: UploadFile | None = File(None),
 ):
-    """Merge extracted products into a catalog with column selection."""
-    # Parse the JSON payload from the 'payload' form field
+    """Merge extracted products into a catalog with column mapping."""
     form = await request.form()
     payload_raw = form.get("payload")
     if not payload_raw:
-        raise HTTPException(400, "Missing 'payload' field with products and column selection.")
+        raise HTTPException(400, "Missing 'payload' field with products and column mapping.")
 
     try:
         payload = json.loads(payload_raw)
@@ -119,18 +148,25 @@ async def merge_to_catalog(
         raise HTTPException(400, "Invalid JSON in 'payload' field.")
 
     products: list[dict] = payload.get("products", [])
-    selected_columns: list[str] = payload.get("selected_columns", [])
+    # column_mapping: {extracted_col: catalog_col | "__new__" | "__skip__"}
+    column_mapping: dict[str, str] = payload.get("column_mapping", {})
 
     if not products:
         raise HTTPException(400, "No products to merge.")
 
-    # Filter products to only include selected columns
-    if selected_columns:
-        selected_set = set(selected_columns)
-        filtered = []
-        for p in products:
-            filtered.append({k: v for k, v in p.items() if k in selected_set})
-        products = filtered
+    # Apply column mapping: rename/filter product keys
+    mapped_products = []
+    for p in products:
+        mapped = {}
+        for ext_col, val in p.items():
+            target = column_mapping.get(ext_col, ext_col)  # default: keep as-is
+            if target == "__skip__":
+                continue
+            if target == "__new__":
+                target = ext_col  # keep the original name as a new column
+            mapped[target] = val
+        mapped_products.append(mapped)
+    products = mapped_products
 
     # Read existing Excel catalog if provided
     excel_file = form.get("excel")
