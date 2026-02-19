@@ -41,22 +41,52 @@ FRONTEND_DIR = Path(__file__).resolve().parent.parent
 
 @app.post("/api/extract")
 async def extract_from_pdfs(
-    pdfs: list[UploadFile] = File(...),
+    request: Request,
     x_api_key: str | None = Header(None),
 ):
-    """Extract products from PDFs without merging. Returns raw product data."""
+    """Extract products from PDFs without merging. Returns raw product data.
+
+    Accepts multipart form with:
+    - pdfs: one or more PDF files
+    - catalog_context (optional): JSON string with {columns: [...], samples: {col: [...]}}
+    """
     api_key = x_api_key or os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         raise HTTPException(400, "No API key provided. Pass it via the UI or set ANTHROPIC_API_KEY env var.")
     set_api_key(api_key)
 
+    form = await request.form()
+
+    # Parse optional catalog context
+    cat_columns: list[str] | None = None
+    cat_samples: dict[str, list[str]] | None = None
+    catalog_ctx_raw = form.get("catalog_context")
+    if catalog_ctx_raw:
+        try:
+            catalog_ctx = json.loads(catalog_ctx_raw)
+            cat_columns = catalog_ctx.get("columns")
+            cat_samples = catalog_ctx.get("samples")
+        except (json.JSONDecodeError, AttributeError):
+            pass  # Silently ignore malformed context
+
+    # Collect PDF files from form
+    pdf_files: list[tuple[str, bytes]] = []
+    for key in form:
+        if key == "pdfs":
+            # form.getlist returns all values for this key
+            items = form.getlist(key)
+            for item in items:
+                if hasattr(item, "read"):
+                    pdf_bytes = await item.read()
+                    pdf_files.append((item.filename or "unknown.pdf", pdf_bytes))
+
+    if not pdf_files:
+        raise HTTPException(400, "No PDF files provided.")
+
     all_products: list[dict] = []
     pdf_results: list[dict] = []
 
-    for pdf_file in pdfs:
-        pdf_bytes = await pdf_file.read()
-        filename = pdf_file.filename or "unknown.pdf"
-
+    for filename, pdf_bytes in pdf_files:
         try:
             text = extract_text_from_pdf(pdf_bytes)
             if not text:
@@ -68,7 +98,11 @@ async def extract_from_pdfs(
                 })
                 continue
 
-            products = extract_products(text, [], filename)
+            products = extract_products(
+                text, [], filename,
+                catalog_columns=cat_columns,
+                catalog_samples=cat_samples,
+            )
             all_products.extend(products)
             pdf_results.append({
                 "filename": filename,
