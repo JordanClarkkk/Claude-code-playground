@@ -3,94 +3,662 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hello World</title>
+  <title>PDF Product Extractor</title>
   <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface-hover: #22252f;
+      --border: #2a2d3a;
+      --border-active: #4f6ef7;
+      --text: #e4e6ed;
+      --text-muted: #8b8fa3;
+      --primary: #4f6ef7;
+      --primary-hover: #3d5bd9;
+      --success: #27ae60;
+      --success-bg: rgba(39, 174, 96, 0.12);
+      --error: #e74c3c;
+      --error-bg: rgba(231, 76, 60, 0.12);
+      --warning: #f39c12;
+      --warning-bg: rgba(243, 156, 18, 0.12);
+      --radius: 10px;
+      --shadow: 0 2px 12px rgba(0,0,0,0.3);
+    }
+
     body {
-      margin: 0;
-      display: flex;
-      justify-content: center;
-      align-items: center;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
       min-height: 100vh;
-      background-color: #f5f5f5;
-      font-family: sans-serif;
+      line-height: 1.5;
     }
 
-    h1 {
-      font-size: 4rem;
-      color: #333;
+    /* ── Header ──────────────────────────────────── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 18px 32px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    header svg { flex-shrink: 0; }
+    header h1 { font-size: 1.2rem; font-weight: 600; }
+    header p { font-size: 0.82rem; color: var(--text-muted); margin-left: auto; }
+
+    /* ── Layout ──────────────────────────────────── */
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 32px 24px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-bottom: 24px;
+    }
+    @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
+
+    /* ── Cards ────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+    }
+    .card h2 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .card .subtitle {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-bottom: 18px;
+    }
+
+    /* ── Drop Zones ──────────────────────────────── */
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 32px 20px;
+      text-align: center;
       cursor: pointer;
-      transition: color 0.3s;
-      user-select: none;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
     }
-
-    h1:hover {
-      color: red;
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: var(--border-active);
+      background: rgba(79, 110, 247, 0.04);
     }
+    .drop-zone input { display: none; }
+    .drop-zone .icon { font-size: 2rem; margin-bottom: 8px; display: block; }
+    .drop-zone .label { font-size: 0.85rem; color: var(--text-muted); }
+    .drop-zone .label strong { color: var(--primary); cursor: pointer; }
 
-    .bouncing {
-      position: absolute;
-      font-size: 2rem;
-      font-family: sans-serif;
-      font-weight: bold;
+    /* ── File List ────────────────────────────────── */
+    .file-list {
+      margin-top: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .file-chip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--surface-hover);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 0.82rem;
+    }
+    .file-chip .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .file-chip .size { color: var(--text-muted); font-size: 0.75rem; }
+    .file-chip .remove {
+      background: none; border: none; color: var(--text-muted);
+      cursor: pointer; font-size: 1rem; line-height: 1; padding: 0 2px;
+    }
+    .file-chip .remove:hover { color: var(--error); }
+
+    /* ── Buttons ──────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 28px;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
       cursor: pointer;
-      user-select: none;
+      transition: background 0.2s, opacity 0.2s;
+    }
+    .btn-primary {
+      background: var(--primary);
+      color: #fff;
+    }
+    .btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+    .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-success {
+      background: var(--success);
+      color: #fff;
+    }
+    .btn-success:hover { filter: brightness(1.1); }
+
+    .action-bar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    /* ── Progress ─────────────────────────────────── */
+    .progress-section { display: none; margin-bottom: 24px; }
+    .progress-section.visible { display: block; }
+    .progress-bar-container {
+      background: var(--surface-hover);
+      border-radius: 6px;
+      height: 8px;
+      overflow: hidden;
+      margin: 12px 0;
+    }
+    .progress-bar {
+      height: 100%;
+      background: var(--primary);
+      border-radius: 6px;
+      transition: width 0.4s ease;
+      width: 0%;
+    }
+    .progress-text { font-size: 0.82rem; color: var(--text-muted); }
+
+    /* ── Results ──────────────────────────────────── */
+    .results-section { display: none; }
+    .results-section.visible { display: block; }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      text-align: center;
+    }
+    .stat-card .value { font-size: 1.6rem; font-weight: 700; }
+    .stat-card .label { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+    .stat-card.success .value { color: var(--success); }
+    .stat-card.warning .value { color: var(--warning); }
+    .stat-card.primary .value { color: var(--primary); }
+
+    /* ── PDF Results ──────────────────────────────── */
+    .pdf-results {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 24px;
+    }
+    .pdf-result {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 0.85rem;
+    }
+    .pdf-result .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .pdf-result .status-dot.success { background: var(--success); }
+    .pdf-result .status-dot.error { background: var(--error); }
+    .pdf-result .fname { flex: 1; font-weight: 500; }
+    .pdf-result .detail { color: var(--text-muted); font-size: 0.78rem; }
+
+    /* ── Table ────────────────────────────────────── */
+    .table-wrapper {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 16px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+    th {
+      background: #1f2333;
+      color: var(--text);
+      font-weight: 600;
+      padding: 10px 14px;
+      text-align: left;
+      white-space: nowrap;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    th.new-col { color: var(--success); }
+    td {
+      padding: 9px 14px;
+      border-bottom: 1px solid var(--border);
+      max-width: 250px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    tr:hover td { background: var(--surface-hover); }
+
+    /* ── Alert ────────────────────────────────────── */
+    .alert {
+      padding: 14px 18px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      margin-bottom: 18px;
+      display: none;
+    }
+    .alert.visible { display: block; }
+    .alert.error {
+      background: var(--error-bg);
+      border: 1px solid var(--error);
+      color: var(--error);
+    }
+    .alert.success {
+      background: var(--success-bg);
+      border: 1px solid var(--success);
+      color: var(--success);
+    }
+
+    /* ── API Key Section ─────────────────────────── */
+    .api-key-section {
+      margin-bottom: 24px;
+    }
+    .api-key-section .card {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 20px;
+    }
+    .api-key-section label {
+      font-size: 0.82rem;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .api-key-input {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 12px;
+      color: var(--text);
+      font-family: monospace;
+      font-size: 0.82rem;
+    }
+    .api-key-input:focus {
+      outline: none;
+      border-color: var(--border-active);
+    }
+    .api-key-note {
+      font-size: 0.72rem;
+      color: var(--text-muted);
       white-space: nowrap;
     }
   </style>
 </head>
 <body>
-  <h1 id="main-hello">Hello World</h1>
 
-  <script>
-    const colors = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22'];
+<header>
+  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#4f6ef7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+    <polyline points="14 2 14 8 20 8"/>
+    <line x1="16" y1="13" x2="8" y2="13"/>
+    <line x1="16" y1="17" x2="8" y2="17"/>
+    <polyline points="10 9 9 9 8 9"/>
+  </svg>
+  <h1>PDF Product Extractor</h1>
+  <p>Upload PDFs &amp; Excel catalog &rarr; Structured product data</p>
+</header>
 
-    document.getElementById('main-hello').addEventListener('click', function () {
-      this.remove();
-      for (let i = 0; i < 7; i++) {
-        spawnBouncing(colors[i]);
-      }
+<div class="container">
+
+  <!-- API Key -->
+  <div class="api-key-section">
+    <div class="card">
+      <label for="apiKey">Anthropic API Key:</label>
+      <input type="password" id="apiKey" class="api-key-input" placeholder="sk-ant-...">
+      <span class="api-key-note">Sent per-request, never stored on server</span>
+    </div>
+  </div>
+
+  <!-- Upload Grid -->
+  <div class="grid">
+    <!-- PDF Upload -->
+    <div class="card">
+      <h2>PDF Documents</h2>
+      <p class="subtitle">Upload one or more PDFs containing product data</p>
+      <div class="drop-zone" id="pdfDropZone">
+        <input type="file" id="pdfInput" accept=".pdf" multiple>
+        <span class="icon">&#128196;</span>
+        <p class="label">Drag &amp; drop PDFs here or <strong>browse</strong></p>
+      </div>
+      <div class="file-list" id="pdfFileList"></div>
+    </div>
+
+    <!-- Excel Upload -->
+    <div class="card">
+      <h2>Excel Catalog (optional)</h2>
+      <p class="subtitle">Existing catalog to merge extracted data into</p>
+      <div class="drop-zone" id="excelDropZone">
+        <input type="file" id="excelInput" accept=".xlsx,.xls">
+        <span class="icon">&#128202;</span>
+        <p class="label">Drag &amp; drop Excel file or <strong>browse</strong></p>
+      </div>
+      <div class="file-list" id="excelFileList"></div>
+    </div>
+  </div>
+
+  <!-- Action -->
+  <div class="action-bar">
+    <button class="btn btn-primary" id="extractBtn" disabled>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+      </svg>
+      Extract Products
+    </button>
+    <span class="progress-text" id="statusText"></span>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-section" id="progressSection">
+    <div class="progress-bar-container">
+      <div class="progress-bar" id="progressBar"></div>
+    </div>
+    <p class="progress-text" id="progressLabel">Initializing...</p>
+  </div>
+
+  <!-- Alert -->
+  <div class="alert" id="alertBox"></div>
+
+  <!-- Results -->
+  <div class="results-section" id="resultsSection">
+    <h2 style="margin-bottom: 16px; font-size: 1.05rem;">Results</h2>
+
+    <!-- Stats -->
+    <div class="stats-grid" id="statsGrid"></div>
+
+    <!-- Per-PDF results -->
+    <div class="pdf-results" id="pdfResults"></div>
+
+    <!-- Preview Table -->
+    <div class="card" style="padding: 0; overflow: hidden;">
+      <div style="padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
+        <h2 style="font-size: 0.9rem; margin: 0;">Data Preview</h2>
+        <span id="previewNote" style="font-size: 0.75rem; color: var(--text-muted);"></span>
+      </div>
+      <div class="table-wrapper" style="max-height: 420px; overflow-y: auto;">
+        <table id="previewTable"></table>
+      </div>
+    </div>
+
+    <!-- Download -->
+    <div style="margin-top: 20px; text-align: center;">
+      <button class="btn btn-success" id="downloadBtn" style="display:none;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        Download Excel
+      </button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────
+let pdfFiles = [];
+let excelFile = null;
+
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => document.querySelectorAll(sel);
+
+// ── Drop Zone Helpers ──────────────────────────────
+function setupDropZone(zoneId, inputId, opts) {
+  const zone = $(zoneId);
+  const input = $(inputId);
+
+  zone.addEventListener("click", () => input.click());
+
+  zone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    zone.classList.add("dragover");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("dragover"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("dragover");
+    opts.onFiles([...e.dataTransfer.files]);
+  });
+  input.addEventListener("change", () => {
+    opts.onFiles([...input.files]);
+    input.value = "";
+  });
+}
+
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
+  return (bytes / 1048576).toFixed(1) + " MB";
+}
+
+function renderFileList(listId, files, onRemove) {
+  const el = $(listId);
+  el.innerHTML = "";
+  files.forEach((f, i) => {
+    const chip = document.createElement("div");
+    chip.className = "file-chip";
+    chip.innerHTML = `
+      <span class="name">${f.name}</span>
+      <span class="size">${formatSize(f.size)}</span>
+      <button class="remove" data-idx="${i}">&times;</button>
+    `;
+    chip.querySelector(".remove").addEventListener("click", (e) => {
+      e.stopPropagation();
+      onRemove(i);
+    });
+    el.appendChild(chip);
+  });
+}
+
+// ── Setup ──────────────────────────────────────────
+setupDropZone("#pdfDropZone", "#pdfInput", {
+  onFiles(files) {
+    const valid = files.filter(f => f.type === "application/pdf" || f.name.endsWith(".pdf"));
+    pdfFiles = [...pdfFiles, ...valid];
+    renderFileList("#pdfFileList", pdfFiles, (i) => {
+      pdfFiles.splice(i, 1);
+      renderFileList("#pdfFileList", pdfFiles, arguments.callee);
+      updateBtn();
+    });
+    updateBtn();
+  }
+});
+
+setupDropZone("#excelDropZone", "#excelInput", {
+  onFiles(files) {
+    const valid = files.filter(f => f.name.match(/\.xlsx?$/i));
+    if (valid.length) {
+      excelFile = valid[0];
+      renderFileList("#excelFileList", [excelFile], () => {
+        excelFile = null;
+        renderFileList("#excelFileList", [], () => {});
+        updateBtn();
+      });
+    }
+    updateBtn();
+  }
+});
+
+function updateBtn() {
+  $("#extractBtn").disabled = pdfFiles.length === 0;
+}
+
+// ── Alert ──────────────────────────────────────────
+function showAlert(msg, type = "error") {
+  const box = $("#alertBox");
+  box.textContent = msg;
+  box.className = `alert visible ${type}`;
+}
+function hideAlert() {
+  $("#alertBox").className = "alert";
+}
+
+// ── Progress ───────────────────────────────────────
+function showProgress(pct, label) {
+  $("#progressSection").classList.add("visible");
+  $("#progressBar").style.width = pct + "%";
+  $("#progressLabel").textContent = label;
+}
+function hideProgress() {
+  $("#progressSection").classList.remove("visible");
+}
+
+// ── Extract ────────────────────────────────────────
+$("#extractBtn").addEventListener("click", async () => {
+  hideAlert();
+  $("#resultsSection").classList.remove("visible");
+
+  const apiKey = $("#apiKey").value.trim();
+  if (!apiKey) {
+    showAlert("Please enter your Anthropic API key above.");
+    return;
+  }
+
+  const btn = $("#extractBtn");
+  btn.disabled = true;
+  btn.textContent = "Processing...";
+
+  showProgress(10, "Uploading files...");
+
+  const form = new FormData();
+  pdfFiles.forEach(f => form.append("pdfs", f));
+  if (excelFile) form.append("excel", excelFile);
+
+  try {
+    showProgress(30, "Extracting text from PDFs...");
+
+    const resp = await fetch("/api/parse", {
+      method: "POST",
+      headers: { "X-API-Key": apiKey },
+      body: form,
     });
 
-    function spawnBouncing(color) {
-      const el = document.createElement('div');
-      el.textContent = 'Hello World';
-      el.className = 'bouncing';
-      el.style.color = color;
-      document.body.appendChild(el);
+    showProgress(80, "Building results...");
 
-      const rect = el.getBoundingClientRect();
-      const w = rect.width;
-      const h = rect.height;
+    const data = await resp.json();
 
-      let x = Math.random() * (window.innerWidth - w);
-      let y = Math.random() * (window.innerHeight - h);
-      let vx = (Math.random() * 3 + 2) * (Math.random() < 0.5 ? 1 : -1);
-      let vy = (Math.random() * 3 + 2) * (Math.random() < 0.5 ? 1 : -1);
-
-      el.style.left = x + 'px';
-      el.style.top = y + 'px';
-
-      function animate() {
-        x += vx;
-        y += vy;
-
-        if (x <= 0 || x + w >= window.innerWidth) {
-          vx = -vx;
-          x = Math.max(0, Math.min(x, window.innerWidth - w));
-        }
-        if (y <= 0 || y + h >= window.innerHeight) {
-          vy = -vy;
-          y = Math.max(0, Math.min(y, window.innerHeight - h));
-        }
-
-        el.style.left = x + 'px';
-        el.style.top = y + 'px';
-
-        requestAnimationFrame(animate);
-      }
-
-      requestAnimationFrame(animate);
+    if (!resp.ok) {
+      throw new Error(data.detail || "Server error");
     }
-  </script>
+
+    if (data.error && data.total_products === 0) {
+      showAlert(data.error, "error");
+      hideProgress();
+      btn.disabled = false;
+      btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> Extract Products`;
+      return;
+    }
+
+    showProgress(100, "Done!");
+    setTimeout(hideProgress, 600);
+
+    renderResults(data);
+
+  } catch (err) {
+    showAlert(err.message);
+    hideProgress();
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> Extract Products`;
+  }
+});
+
+// ── Render Results ─────────────────────────────────
+function renderResults(data) {
+  $("#resultsSection").classList.add("visible");
+
+  // Stats
+  const stats = data.stats || {};
+  const statsHTML = [
+    { value: data.total_products, label: "Products Extracted", cls: "primary" },
+    { value: stats.matched || 0, label: "Matched Existing", cls: "success" },
+    { value: stats.added || 0, label: "New Rows Added", cls: "warning" },
+    { value: (stats.new_columns || []).length, label: "New Columns", cls: "primary" },
+  ].map(s => `
+    <div class="stat-card ${s.cls}">
+      <div class="value">${s.value}</div>
+      <div class="label">${s.label}</div>
+    </div>
+  `).join("");
+  $("#statsGrid").innerHTML = statsHTML;
+
+  // PDF results
+  const pdfHTML = (data.pdf_results || []).map(r => `
+    <div class="pdf-result">
+      <span class="status-dot ${r.status}"></span>
+      <span class="fname">${r.filename}</span>
+      <span class="detail">${r.status === "success" ? r.products_found + " products found" : r.message}</span>
+    </div>
+  `).join("");
+  $("#pdfResults").innerHTML = pdfHTML;
+
+  // Table preview
+  const cols = data.columns || [];
+  const newCols = new Set(stats.new_columns || []);
+  const rows = data.preview || [];
+
+  let tableHTML = "<thead><tr>";
+  cols.forEach(c => {
+    tableHTML += `<th class="${newCols.has(c) ? "new-col" : ""}">${escHTML(c)}</th>`;
+  });
+  tableHTML += "</tr></thead><tbody>";
+  rows.forEach(row => {
+    tableHTML += "<tr>";
+    cols.forEach(c => {
+      tableHTML += `<td title="${escHTML(String(row[c] ?? ""))}">${escHTML(String(row[c] ?? ""))}</td>`;
+    });
+    tableHTML += "</tr>";
+  });
+  tableHTML += "</tbody>";
+  $("#previewTable").innerHTML = tableHTML;
+  $("#previewNote").textContent = `Showing ${rows.length} of ${data.total_rows} rows`;
+
+  // Download button
+  if (data.download_url) {
+    const dlBtn = $("#downloadBtn");
+    dlBtn.style.display = "inline-flex";
+    dlBtn.onclick = () => window.open(data.download_url, "_blank");
+  }
+}
+
+function escHTML(s) {
+  const d = document.createElement("div");
+  d.textContent = s;
+  return d.innerHTML;
+}
+</script>
+
 </body>
 </html>
