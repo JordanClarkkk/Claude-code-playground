@@ -709,6 +709,8 @@ function renderExcelFileList() {
   chip.querySelector(".remove").addEventListener("click", (e) => {
     e.stopPropagation();
     excelFile = null;
+    catalogColumns = [];
+    catalogSamples = {};
     renderExcelFileList();
     updateButtons();
   });
@@ -730,6 +732,8 @@ setupDropZone("#excelDropZone", "#excelInput", {
     const valid = files.filter(f => f.name.match(/\.xlsx?$/i));
     if (valid.length) {
       excelFile = valid[0];
+      catalogColumns = [];  // reset cached columns for new file
+      catalogSamples = {};
       renderExcelFileList();
     }
     updateButtons();
@@ -776,6 +780,19 @@ function showProgress(pct, label) {
 }
 function hideProgress() { $("#progressSection").classList.remove("visible"); }
 
+// ── Fetch Catalog Columns (cached) ───────────────────
+async function ensureCatalogColumns() {
+  if (!excelFile) return;
+  if (catalogColumns.length > 0) return;  // already fetched
+  const form = new FormData();
+  form.append("excel", excelFile);
+  const resp = await fetch("/api/catalog-columns", { method: "POST", body: form });
+  const data = await resp.json();
+  if (!resp.ok) throw new Error(data.detail || "Failed to read catalog columns.");
+  catalogColumns = data.columns || [];
+  catalogSamples = data.samples || {};
+}
+
 // ── Extract (PDF parsing only) ──────────────────────
 $("#extractBtn").addEventListener("click", async () => {
   hideAlert();
@@ -793,6 +810,25 @@ $("#extractBtn").addEventListener("click", async () => {
 
   const form = new FormData();
   newPdfs.forEach(f => form.append("pdfs", f));
+
+  // If an Excel catalog is uploaded, read its columns and pass them as context
+  // so the LLM can intelligently map free-text (descriptions, features, etc.)
+  // into the correct catalog columns during extraction
+  try {
+    if (excelFile) {
+      showProgress(15, "Reading catalog columns for context...");
+      await ensureCatalogColumns();
+      if (catalogColumns.length > 0) {
+        form.append("catalog_context", JSON.stringify({
+          columns: catalogColumns,
+          samples: catalogSamples,
+        }));
+      }
+    }
+  } catch (err) {
+    // Non-fatal: extraction will still work, just without catalog hints
+    console.warn("Could not read catalog columns:", err.message);
+  }
 
   try {
     showProgress(30, "Extracting products from PDFs...");
@@ -1057,15 +1093,7 @@ $("#mergeBtn").addEventListener("click", async () => {
     showProgress(20, "Reading catalog columns...");
 
     try {
-      const form = new FormData();
-      form.append("excel", excelFile);
-      const resp = await fetch("/api/catalog-columns", { method: "POST", body: form });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.detail || "Failed to read catalog columns.");
-
-      catalogColumns = data.columns || [];
-      catalogSamples = data.samples || {};
-
+      await ensureCatalogColumns();
       hideProgress();
 
       // Auto-match and show mapping UI
