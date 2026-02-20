@@ -593,11 +593,11 @@
 <div class="container">
 
   <!-- API Key -->
-  <div class="api-key-section">
-    <div class="card">
+  <div class="api-key-section" id="apiKeySection">
+    <div class="card" id="apiKeyCard">
       <label for="apiKey">Anthropic API Key:</label>
       <input type="password" id="apiKey" class="api-key-input" placeholder="sk-ant-...">
-      <span class="api-key-note">Sent per-request, never stored on server</span>
+      <span class="api-key-note" id="apiKeyNote">Sent per-request, never stored on server</span>
     </div>
   </div>
 
@@ -753,12 +753,34 @@ let extractedPdfNames = new Set();    // PDF filenames already extracted
 let catalogColumns = [];              // Columns from the uploaded Excel catalog
 let catalogSamples = {};              // {col: [sample1, sample2, ...]}
 let columnMapping = {};               // {extractedCol: catalogCol | "__new__" | "__skip__"}
+let hasServerKey = false;             // True when server has ANTHROPIC_API_KEY in .env
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
 
 const EXTRACT_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>';
 const MERGE_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V15M9 21H5a2 2 0 0 1-2-2V15m0-6h18"/></svg>';
+const LOCK_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+
+// ── Server Config Check ───────────────────────────
+(async function checkServerConfig() {
+  try {
+    const resp = await fetch("/api/config");
+    const data = await resp.json();
+    hasServerKey = data.has_server_key === true;
+    if (hasServerKey) {
+      const card = $("#apiKeyCard");
+      const input = $("#apiKey");
+      const note = $("#apiKeyNote");
+      input.style.display = "none";
+      card.querySelector("label").innerHTML = LOCK_SVG + " &nbsp;API Key configured on server";
+      note.textContent = "Using server-side key from .env — no key needed in browser";
+      note.style.color = "var(--success-dark)";
+    }
+  } catch (_) {
+    // Config endpoint not available — keep default (manual key input)
+  }
+})();
 
 // ── Drop Zone Helpers ──────────────────────────────
 function setupDropZone(zoneId, inputId, opts) {
@@ -910,7 +932,7 @@ $("#extractBtn").addEventListener("click", async () => {
   hideAlert();
 
   const apiKey = $("#apiKey").value.trim();
-  if (!apiKey) { showAlert("Please enter your Anthropic API key above."); return; }
+  if (!apiKey && !hasServerKey) { showAlert("Please enter your Anthropic API key above."); return; }
 
   const newPdfs = getNewPdfFiles();
   if (newPdfs.length === 0) { showAlert("All PDFs have already been extracted."); return; }
@@ -944,9 +966,11 @@ $("#extractBtn").addEventListener("click", async () => {
 
   try {
     showProgress(30, "Extracting products from PDFs...");
+    const headers = {};
+    if (apiKey) headers["X-API-Key"] = apiKey;
     const resp = await fetch("/api/extract", {
       method: "POST",
-      headers: { "X-API-Key": apiKey },
+      headers,
       body: form,
     });
 

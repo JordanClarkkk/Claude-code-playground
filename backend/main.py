@@ -39,6 +39,13 @@ FRONTEND_DIR = Path(__file__).resolve().parent.parent
 
 # ── API Routes ────────────────────────────────────────────────────────────────
 
+@app.get("/api/config")
+async def get_config():
+    """Return non-sensitive server configuration for the frontend."""
+    has_server_key = bool(os.getenv("ANTHROPIC_API_KEY"))
+    return {"has_server_key": has_server_key}
+
+
 @app.post("/api/extract")
 async def extract_from_pdfs(
     request: Request,
