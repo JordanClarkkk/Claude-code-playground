@@ -597,7 +597,7 @@
     <div class="card" id="apiKeyCard">
       <label for="apiKey">Anthropic API Key:</label>
       <input type="password" id="apiKey" class="api-key-input" placeholder="sk-ant-...">
-      <span class="api-key-note" id="apiKeyNote">Sent per-request, never stored on server</span>
+      <span class="api-key-note" id="apiKeyNote">Your key stays in the browser and is never stored</span>
     </div>
   </div>
 
@@ -1009,7 +1009,7 @@ $("#extractBtn").addEventListener("click", async () => {
     showProgress(100, "Done!");
     setTimeout(hideProgress, 600);
 
-    renderExtractedSection(data.file_results || []);
+    renderExtractedSection(data.file_results || [], data.dedup_merged || 0);
     renderFileList();
     updateButtons();
 
@@ -1023,15 +1023,19 @@ $("#extractBtn").addEventListener("click", async () => {
 });
 
 // ── Render Extracted Section ────────────────────────
-function renderExtractedSection(fileResults) {
+function renderExtractedSection(fileResults, dedupMerged) {
   $("#extractedSection").classList.add("visible");
 
   // Stats
-  $("#extractStatsGrid").innerHTML = [
+  const stats = [
     { value: extractedProducts.length, label: "Total Products", cls: "primary" },
     { value: extractedColumns.length, label: "Total Columns", cls: "primary" },
     { value: extractedFileNames.size, label: "Files Processed", cls: "success" },
-  ].map(s => `
+  ];
+  if (dedupMerged > 0) {
+    stats.push({ value: dedupMerged, label: "Duplicates Merged", cls: "success" });
+  }
+  $("#extractStatsGrid").innerHTML = stats.map(s => `
     <div class="stat-card ${s.cls}">
       <div class="value">${s.value}</div>
       <div class="label">${s.label}</div>

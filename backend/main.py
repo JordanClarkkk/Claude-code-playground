@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from file_parser import extract_text, is_supported, SUPPORTED_EXTENSIONS
 from ai_extractor import extract_products, set_api_key
 from excel_handler import read_catalog, merge_products, write_catalog
+from deduplicator import deduplicate_products
 
 app = FastAPI(title="Product Extractor")
 
@@ -123,6 +124,9 @@ async def extract_from_files(
                 "products_found": 0,
             })
 
+    # Deduplicate: normalise equivalent columns and merge same-product rows
+    all_products, dedup_merged = deduplicate_products(all_products)
+
     # Discover all columns across products
     columns: list[str] = []
     seen: set[str] = set()
@@ -137,6 +141,7 @@ async def extract_from_files(
         "products": all_products,
         "columns": columns,
         "total_products": len(all_products),
+        "dedup_merged": dedup_merged,
     }
 
 
