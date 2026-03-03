@@ -1,7 +1,6 @@
-"""Use Claude to extract structured product data from PDF text."""
+"""Use Claude to extract structured product data from document text."""
 
 import json
-import os
 from anthropic import Anthropic
 
 _client: Anthropic | None = None
@@ -17,26 +16,19 @@ def set_api_key(api_key: str) -> None:
 
 
 def _get_client() -> Anthropic:
-    global _client
     if _client is None:
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise RuntimeError(
-                "ANTHROPIC_API_KEY environment variable is not set. "
-                "Create a .env file in the backend/ directory or export the variable."
-            )
-        _client = Anthropic(api_key=api_key)
+        raise RuntimeError("No API key has been set. Call set_api_key() first.")
     return _client
 
 
 def extract_products(
-    pdf_text: str,
+    document_text: str,
     existing_columns: list[str],
-    pdf_filename: str = "document.pdf",
+    filename: str = "document",
     catalog_columns: list[str] | None = None,
     catalog_samples: dict[str, list[str]] | None = None,
 ) -> list[dict]:
-    """Ask Claude to extract product rows from the PDF text.
+    """Ask Claude to extract product rows from document text.
 
     When catalog_columns and catalog_samples are provided, Claude will
     intelligently map free-text content (descriptions, features, benefits,
@@ -63,15 +55,15 @@ def extract_products(
             "IMPORTANT: The target Excel catalog has these columns:\n"
             f"{cols_block}\n\n"
             "You MUST map extracted data into these exact column names wherever possible.\n"
-            "For free-text content in the PDF (descriptions, features, benefits, specs, "
+            "For free-text content in the document (descriptions, features, benefits, specs, "
             "marketing copy, bullet points, etc.), intelligently determine which catalog "
             "column each piece of information belongs to based on the column name and the "
             "example values shown above.\n\n"
             "For example:\n"
-            '- A "Short Description" in the PDF might map to a catalog column called "Description" or "Short Desc"\n'
+            '- A "Short Description" might map to a catalog column called "Description" or "Short Desc"\n'
             '- "Features and Benefits" text might need to be split across "Features" and "Benefits" columns\n'
             '- Bullet-point specs might map to specific columns like "Weight", "Material", "Dimensions"\n\n'
-            "If the PDF contains data that genuinely does not fit ANY existing catalog column, "
+            "If the document contains data that genuinely does not fit ANY existing catalog column, "
             "create a new descriptive column name for it. But prefer mapping to existing columns.\n\n"
         )
     elif existing_columns:
@@ -79,7 +71,7 @@ def extract_products(
             "The existing Excel catalog has these columns:\n"
             f"{json.dumps(existing_columns)}\n\n"
             "Map extracted data to these columns where applicable. "
-            "If the PDF contains attributes that don't fit any existing column, "
+            "If the document contains attributes that don't fit any existing column, "
             "create NEW descriptive column names for them.\n\n"
         )
     else:
@@ -87,7 +79,7 @@ def extract_products(
 
     prompt = (
         f"You are a product-data extraction assistant.\n\n"
-        f"I will give you the raw text extracted from a PDF file named '{pdf_filename}'.\n\n"
+        f"I will give you text extracted from a file named '{filename}'.\n\n"
         f"{columns_hint}"
         "Extract EVERY product / item you can find and return a JSON array of objects. "
         "Each object represents one product row. Use consistent, descriptive keys.\n\n"
@@ -100,7 +92,7 @@ def extract_products(
         "- For free-text content (descriptions, features, benefits, marketing copy), "
         "parse intelligently: extract individual facts, specs, and attributes into "
         "the most appropriate column rather than dumping everything into one field.\n\n"
-        f"--- PDF TEXT START ---\n{pdf_text}\n--- PDF TEXT END ---"
+        f"--- DOCUMENT TEXT START ---\n{document_text}\n--- DOCUMENT TEXT END ---"
     )
 
     client = _get_client()

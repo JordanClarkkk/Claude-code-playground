@@ -1,25 +1,21 @@
-"""FastAPI backend for PDF → Excel product extraction."""
+"""FastAPI backend for multi-format document → Excel product extraction."""
 
-import os
 import uuid
 import json
 import traceback
 from pathlib import Path
 from typing import Optional
 
-from dotenv import load_dotenv
-load_dotenv()
-
 from fastapi import FastAPI, UploadFile, File, Form, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from pdf_parser import extract_text_from_pdf
+from file_parser import extract_text, is_supported, SUPPORTED_EXTENSIONS
 from ai_extractor import extract_products, set_api_key
 from excel_handler import read_catalog, merge_products, write_catalog
 
-app = FastAPI(title="PDF Product Extractor")
+app = FastAPI(title="Product Extractor")
 
 app.add_middleware(
     CORSMiddleware,
@@ -42,24 +38,25 @@ FRONTEND_DIR = Path(__file__).resolve().parent.parent
 @app.get("/api/config")
 async def get_config():
     """Return non-sensitive server configuration for the frontend."""
-    has_server_key = bool(os.getenv("ANTHROPIC_API_KEY"))
-    return {"has_server_key": has_server_key}
+    return {
+        "supported_extensions": sorted(SUPPORTED_EXTENSIONS),
+    }
 
 
 @app.post("/api/extract")
-async def extract_from_pdfs(
+async def extract_from_files(
     request: Request,
     x_api_key: str | None = Header(None),
 ):
-    """Extract products from PDFs without merging. Returns raw product data.
+    """Extract products from uploaded files. Returns raw product data.
 
     Accepts multipart form with:
-    - pdfs: one or more PDF files
+    - files: one or more files of any supported type
     - catalog_context (optional): JSON string with {columns: [...], samples: {col: [...]}}
     """
-    api_key = x_api_key or os.getenv("ANTHROPIC_API_KEY")
+    api_key = x_api_key
     if not api_key:
-        raise HTTPException(400, "No API key provided. Pass it via the UI or set ANTHROPIC_API_KEY env var.")
+        raise HTTPException(400, "No API key provided. Enter your Anthropic API key in the UI.")
     set_api_key(api_key)
 
     form = await request.form()
@@ -76,31 +73,32 @@ async def extract_from_pdfs(
         except (json.JSONDecodeError, AttributeError):
             pass  # Silently ignore malformed context
 
-    # Collect PDF files from form
-    pdf_files: list[tuple[str, bytes]] = []
+    # Collect files from form
+    uploaded_files: list[tuple[str, bytes]] = []
     for key in form:
-        if key == "pdfs":
-            # form.getlist returns all values for this key
+        if key == "files":
             items = form.getlist(key)
             for item in items:
                 if hasattr(item, "read"):
-                    pdf_bytes = await item.read()
-                    pdf_files.append((item.filename or "unknown.pdf", pdf_bytes))
+                    file_bytes = await item.read()
+                    filename = item.filename or "unknown"
+                    if is_supported(filename):
+                        uploaded_files.append((filename, file_bytes))
 
-    if not pdf_files:
-        raise HTTPException(400, "No PDF files provided.")
+    if not uploaded_files:
+        raise HTTPException(400, "No supported files provided.")
 
     all_products: list[dict] = []
-    pdf_results: list[dict] = []
+    file_results: list[dict] = []
 
-    for filename, pdf_bytes in pdf_files:
+    for filename, file_bytes in uploaded_files:
         try:
-            text = extract_text_from_pdf(pdf_bytes)
+            text = extract_text(file_bytes, filename)
             if not text:
-                pdf_results.append({
+                file_results.append({
                     "filename": filename,
                     "status": "error",
-                    "message": "Could not extract any text from PDF",
+                    "message": "Could not extract any text from file",
                     "products_found": 0,
                 })
                 continue
@@ -111,14 +109,14 @@ async def extract_from_pdfs(
                 catalog_samples=cat_samples,
             )
             all_products.extend(products)
-            pdf_results.append({
+            file_results.append({
                 "filename": filename,
                 "status": "success",
                 "products_found": len(products),
             })
         except Exception as e:
             traceback.print_exc()
-            pdf_results.append({
+            file_results.append({
                 "filename": filename,
                 "status": "error",
                 "message": str(e),
@@ -135,7 +133,7 @@ async def extract_from_pdfs(
                 seen.add(k)
 
     return {
-        "pdf_results": pdf_results,
+        "file_results": file_results,
         "products": all_products,
         "columns": columns,
         "total_products": len(all_products),
