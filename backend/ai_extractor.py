@@ -15,10 +15,15 @@ def set_api_key(api_key: str) -> None:
         _current_key = api_key
 
 
-def _get_client() -> Anthropic:
+def get_client() -> Anthropic:
+    """Return the configured Anthropic client. Raises RuntimeError if no key set."""
     if _client is None:
         raise RuntimeError("No API key has been set. Call set_api_key() first.")
     return _client
+
+
+# Keep backward compat alias
+_get_client = get_client
 
 
 def extract_products(
