@@ -1,4 +1,4 @@
-"""Use Claude to extract structured product data from PDF text."""
+"""Use Claude to extract structured product data from document text."""
 
 import json
 import os
@@ -30,13 +30,13 @@ def _get_client() -> Anthropic:
 
 
 def extract_products(
-    pdf_text: str,
+    document_text: str,
     existing_columns: list[str],
-    pdf_filename: str = "document.pdf",
+    filename: str = "document",
     catalog_columns: list[str] | None = None,
     catalog_samples: dict[str, list[str]] | None = None,
 ) -> list[dict]:
-    """Ask Claude to extract product rows from the PDF text.
+    """Ask Claude to extract product rows from document text.
 
     When catalog_columns and catalog_samples are provided, Claude will
     intelligently map free-text content (descriptions, features, benefits,
@@ -87,7 +87,7 @@ def extract_products(
 
     prompt = (
         f"You are a product-data extraction assistant.\n\n"
-        f"I will give you the raw text extracted from a PDF file named '{pdf_filename}'.\n\n"
+        f"I will give you text extracted from a file named '{filename}'.\n\n"
         f"{columns_hint}"
         "Extract EVERY product / item you can find and return a JSON array of objects. "
         "Each object represents one product row. Use consistent, descriptive keys.\n\n"
@@ -100,7 +100,7 @@ def extract_products(
         "- For free-text content (descriptions, features, benefits, marketing copy), "
         "parse intelligently: extract individual facts, specs, and attributes into "
         "the most appropriate column rather than dumping everything into one field.\n\n"
-        f"--- PDF TEXT START ---\n{pdf_text}\n--- PDF TEXT END ---"
+        f"--- DOCUMENT TEXT START ---\n{document_text}\n--- DOCUMENT TEXT END ---"
     )
 
     client = _get_client()

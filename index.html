@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PDF Product Extractor</title>
+  <title>Product Extractor</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;550;600;700&display=swap" rel="stylesheet">
@@ -294,14 +294,14 @@
     .stat-card.warning .value { color: var(--warning-dark); }
     .stat-card.primary .value { color: var(--primary); }
 
-    /* ── PDF Results ──────────────────────────────── */
-    .pdf-results {
+    /* ── File Results ─────────────────────────────── */
+    .file-results {
       display: flex;
       flex-direction: column;
       gap: var(--space-xs);
       margin-bottom: var(--space-lg);
     }
-    .pdf-result {
+    .file-result {
       display: flex;
       align-items: center;
       gap: var(--space-sm);
@@ -312,16 +312,16 @@
       font-size: 13px;
       transition: border-color 150ms ease;
     }
-    .pdf-result:hover { border-color: rgba(114, 116, 141, 0.25); }
-    .pdf-result .status-dot {
+    .file-result:hover { border-color: rgba(114, 116, 141, 0.25); }
+    .file-result .status-dot {
       width: 8px; height: 8px;
       border-radius: 50%;
       flex-shrink: 0;
     }
-    .pdf-result .status-dot.success { background: var(--success); }
-    .pdf-result .status-dot.error { background: var(--error); }
-    .pdf-result .fname { flex: 1; font-weight: 500; }
-    .pdf-result .detail { color: var(--text-muted); font-size: 12px; }
+    .file-result .status-dot.success { background: var(--success); }
+    .file-result .status-dot.error { background: var(--error); }
+    .file-result .fname { flex: 1; font-weight: 500; }
+    .file-result .detail { color: var(--text-muted); font-size: 12px; }
 
     /* ── Table ────────────────────────────────────── */
     .table-wrapper {
@@ -586,8 +586,8 @@
       <polyline points="10 9 9 9 8 9"/>
     </svg>
   </div>
-  <h1>PDF Product Extractor</h1>
-  <p>Upload PDFs &amp; Excel catalog &rarr; Structured product data</p>
+  <h1>Product Extractor</h1>
+  <p>Upload documents &amp; Excel catalog &rarr; Structured product data</p>
 </header>
 
 <div class="container">
@@ -603,16 +603,16 @@
 
   <!-- Upload Grid -->
   <div class="grid">
-    <!-- PDF Upload -->
+    <!-- File Upload -->
     <div class="card">
-      <h2>PDF Documents</h2>
-      <p class="subtitle">Upload one or more PDFs containing product data</p>
-      <div class="drop-zone" id="pdfDropZone">
-        <input type="file" id="pdfInput" accept=".pdf" multiple>
+      <h2>Source Documents</h2>
+      <p class="subtitle">Upload files containing product data (PDF, Word, Excel, images, CSV, and more)</p>
+      <div class="drop-zone" id="fileDropZone">
+        <input type="file" id="fileInput" accept=".pdf,.docx,.pptx,.xlsx,.xls,.csv,.tsv,.txt,.log,.md,.rst,.html,.htm,.xml,.json,.png,.jpg,.jpeg,.tiff,.tif,.bmp,.gif,.webp" multiple>
         <span class="icon">&#128196;</span>
-        <p class="label">Drag &amp; drop PDFs here or <strong>browse</strong></p>
+        <p class="label">Drag &amp; drop files here or <strong>browse</strong></p>
       </div>
-      <div class="file-list" id="pdfFileList"></div>
+      <div class="file-list" id="fileList"></div>
     </div>
 
     <!-- Excel Upload -->
@@ -663,8 +663,8 @@
     <!-- Extraction Stats -->
     <div class="stats-grid" id="extractStatsGrid"></div>
 
-    <!-- Per-PDF results -->
-    <div class="pdf-results" id="pdfResults"></div>
+    <!-- Per-file results -->
+    <div class="file-results" id="fileResults"></div>
 
     <!-- Column Mapping (shown when merge is triggered) -->
     <div class="column-mapping" id="columnMapping">
@@ -745,15 +745,16 @@
 
 <script>
 // ── Session State ────────────────────────────────────
-let pdfFiles = [];                    // File objects in the list
+let sourceFiles = [];                 // File objects in the list
 let excelFile = null;                 // Excel File object or null
 let extractedProducts = [];           // All products extracted so far (session)
 let extractedColumns = [];            // Ordered column names discovered
-let extractedPdfNames = new Set();    // PDF filenames already extracted
+let extractedFileNames = new Set();   // Filenames already extracted
 let catalogColumns = [];              // Columns from the uploaded Excel catalog
 let catalogSamples = {};              // {col: [sample1, sample2, ...]}
 let columnMapping = {};               // {extractedCol: catalogCol | "__new__" | "__skip__"}
 let hasServerKey = false;             // True when server has ANTHROPIC_API_KEY in .env
+let supportedExtensions = new Set();  // Populated from server config
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
@@ -768,6 +769,9 @@ const LOCK_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" st
     const resp = await fetch("/api/config");
     const data = await resp.json();
     hasServerKey = data.has_server_key === true;
+    if (data.supported_extensions) {
+      supportedExtensions = new Set(data.supported_extensions);
+    }
     if (hasServerKey) {
       const card = $("#apiKeyCard");
       const input = $("#apiKey");
@@ -806,11 +810,11 @@ function escHTML(s) {
 }
 
 // ── File List Rendering ──────────────────────────────
-function renderPdfFileList() {
-  const el = $("#pdfFileList");
+function renderFileList() {
+  const el = $("#fileList");
   el.innerHTML = "";
-  pdfFiles.forEach((f, i) => {
-    const done = extractedPdfNames.has(f.name);
+  sourceFiles.forEach((f, i) => {
+    const done = extractedFileNames.has(f.name);
     const chip = document.createElement("div");
     chip.className = "file-chip";
     chip.innerHTML = `
@@ -821,8 +825,8 @@ function renderPdfFileList() {
     `;
     chip.querySelector(".remove").addEventListener("click", (e) => {
       e.stopPropagation();
-      pdfFiles.splice(i, 1);
-      renderPdfFileList();
+      sourceFiles.splice(i, 1);
+      renderFileList();
       updateButtons();
     });
     el.appendChild(chip);
@@ -852,11 +856,23 @@ function renderExcelFileList() {
 }
 
 // ── Setup Drop Zones ────────────────────────────────
-setupDropZone("#pdfDropZone", "#pdfInput", {
+function isFileSupported(file) {
+  const ext = "." + file.name.split(".").pop().toLowerCase();
+  // Check against server-provided list, or fall back to a local list
+  if (supportedExtensions.size > 0) return supportedExtensions.has(ext);
+  const fallback = new Set([
+    ".pdf",".docx",".pptx",".xlsx",".xls",".csv",".tsv",
+    ".txt",".log",".md",".rst",".html",".htm",".xml",".json",
+    ".png",".jpg",".jpeg",".tiff",".tif",".bmp",".gif",".webp",
+  ]);
+  return fallback.has(ext);
+}
+
+setupDropZone("#fileDropZone", "#fileInput", {
   onFiles(files) {
-    const valid = files.filter(f => f.type === "application/pdf" || f.name.endsWith(".pdf"));
-    pdfFiles = [...pdfFiles, ...valid];
-    renderPdfFileList();
+    const valid = files.filter(f => isFileSupported(f));
+    sourceFiles = [...sourceFiles, ...valid];
+    renderFileList();
     updateButtons();
   }
 });
@@ -875,21 +891,21 @@ setupDropZone("#excelDropZone", "#excelInput", {
 });
 
 // ── Button State ─────────────────────────────────────
-function getNewPdfFiles() {
-  return pdfFiles.filter(f => !extractedPdfNames.has(f.name));
+function getNewFiles() {
+  return sourceFiles.filter(f => !extractedFileNames.has(f.name));
 }
 
 function updateButtons() {
-  const newPdfs = getNewPdfFiles();
+  const newFiles = getNewFiles();
   const extractBtn = $("#extractBtn");
   const mergeBtn = $("#mergeBtn");
 
-  // Extract enabled when there are new (un-extracted) PDFs
-  extractBtn.disabled = newPdfs.length === 0;
+  // Extract enabled when there are new (un-extracted) files
+  extractBtn.disabled = newFiles.length === 0;
 
   // Dynamic label
-  if (extractedProducts.length > 0 && newPdfs.length > 0) {
-    extractBtn.innerHTML = EXTRACT_SVG + ` Extract New PDFs (${newPdfs.length})`;
+  if (extractedProducts.length > 0 && newFiles.length > 0) {
+    extractBtn.innerHTML = EXTRACT_SVG + ` Extract New Files (${newFiles.length})`;
   } else {
     extractBtn.innerHTML = EXTRACT_SVG + " Extract Products";
   }
@@ -927,23 +943,23 @@ async function ensureCatalogColumns() {
   catalogSamples = data.samples || {};
 }
 
-// ── Extract (PDF parsing only) ──────────────────────
+// ── Extract (file parsing) ───────────────────────────
 $("#extractBtn").addEventListener("click", async () => {
   hideAlert();
 
   const apiKey = $("#apiKey").value.trim();
   if (!apiKey && !hasServerKey) { showAlert("Please enter your Anthropic API key above."); return; }
 
-  const newPdfs = getNewPdfFiles();
-  if (newPdfs.length === 0) { showAlert("All PDFs have already been extracted."); return; }
+  const newFiles = getNewFiles();
+  if (newFiles.length === 0) { showAlert("All files have already been extracted."); return; }
 
   const btn = $("#extractBtn");
   btn.disabled = true;
   btn.textContent = "Extracting...";
-  showProgress(10, "Uploading PDFs...");
+  showProgress(10, "Uploading files...");
 
   const form = new FormData();
-  newPdfs.forEach(f => form.append("pdfs", f));
+  newFiles.forEach(f => form.append("files", f));
 
   // If an Excel catalog is uploaded, read its columns and pass them as context
   // so the LLM can intelligently map free-text (descriptions, features, etc.)
@@ -965,7 +981,7 @@ $("#extractBtn").addEventListener("click", async () => {
   }
 
   try {
-    showProgress(30, "Extracting products from PDFs...");
+    showProgress(30, "Extracting products from files...");
     const headers = {};
     if (apiKey) headers["X-API-Key"] = apiKey;
     const resp = await fetch("/api/extract", {
@@ -980,16 +996,16 @@ $("#extractBtn").addEventListener("click", async () => {
     if (!resp.ok) throw new Error(data.detail || "Server error");
 
     if (data.total_products === 0) {
-      showAlert("No products could be extracted from the provided PDFs.", "error");
-      renderPdfResults(data.pdf_results || []);
+      showAlert("No products could be extracted from the provided files.", "error");
+      renderFileResults(data.file_results || []);
       showProgress(100, "Done");
       setTimeout(hideProgress, 600);
       updateButtons();
       return;
     }
 
-    // Mark these PDFs as extracted
-    newPdfs.forEach(f => extractedPdfNames.add(f.name));
+    // Mark these files as extracted
+    newFiles.forEach(f => extractedFileNames.add(f.name));
 
     // Accumulate products
     extractedProducts = [...extractedProducts, ...data.products];
@@ -1006,8 +1022,8 @@ $("#extractBtn").addEventListener("click", async () => {
     showProgress(100, "Done!");
     setTimeout(hideProgress, 600);
 
-    renderExtractedSection(data.pdf_results || []);
-    renderPdfFileList();
+    renderExtractedSection(data.file_results || []);
+    renderFileList();
     updateButtons();
 
   } catch (err) {
@@ -1020,14 +1036,14 @@ $("#extractBtn").addEventListener("click", async () => {
 });
 
 // ── Render Extracted Section ────────────────────────
-function renderExtractedSection(pdfResults) {
+function renderExtractedSection(fileResults) {
   $("#extractedSection").classList.add("visible");
 
   // Stats
   $("#extractStatsGrid").innerHTML = [
     { value: extractedProducts.length, label: "Total Products", cls: "primary" },
     { value: extractedColumns.length, label: "Total Columns", cls: "primary" },
-    { value: extractedPdfNames.size, label: "PDFs Processed", cls: "success" },
+    { value: extractedFileNames.size, label: "Files Processed", cls: "success" },
   ].map(s => `
     <div class="stat-card ${s.cls}">
       <div class="value">${s.value}</div>
@@ -1035,13 +1051,13 @@ function renderExtractedSection(pdfResults) {
     </div>
   `).join("");
 
-  renderPdfResults(pdfResults);
+  renderFileResults(fileResults);
   renderExtractedPreview();
 }
 
-function renderPdfResults(pdfResults) {
-  $("#pdfResults").innerHTML = pdfResults.map(r => `
-    <div class="pdf-result">
+function renderFileResults(fileResults) {
+  $("#fileResults").innerHTML = fileResults.map(r => `
+    <div class="file-result">
       <span class="status-dot ${r.status}"></span>
       <span class="fname">${escHTML(r.filename)}</span>
       <span class="detail">${r.status === "success" ? r.products_found + " products found" : escHTML(r.message || "")}</span>

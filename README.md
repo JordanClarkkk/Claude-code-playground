@@ -1,12 +1,25 @@
-# PDF Product Extractor
+# Product Extractor
 
-A full-stack web application that extracts structured product data from PDF documents using Claude AI and merges the results into Excel catalogs with intelligent column mapping.
+A full-stack web application that extracts structured product data from virtually any document format using Claude AI and merges the results into Excel catalogs with intelligent column mapping.
+
+## Supported File Types
+
+| Category | Formats |
+|----------|---------|
+| Documents | PDF, Word (.docx), PowerPoint (.pptx) |
+| Spreadsheets | Excel (.xlsx, .xls), CSV, TSV |
+| Images (OCR) | PNG, JPG, JPEG, TIFF, BMP, GIF, WEBP |
+| Web / Markup | HTML, XML, JSON |
+| Plain Text | TXT, LOG, Markdown (.md), reStructuredText (.rst) |
+
+PDFs with no text layer are automatically processed with OCR. Image files are always OCR'd.
 
 ## Features
 
-### PDF Extraction
-- Upload one or more PDF files via drag-and-drop or file picker
-- Text-based extraction using **pdfplumber** with automatic **OCR fallback** (pytesseract) for scanned documents
+### Multi-Format Extraction
+- Upload one or more files of any supported type via drag-and-drop or file picker
+- Text-based extraction for documents and structured formats
+- Automatic **OCR fallback** (pytesseract) for scanned PDFs and image files
 - Claude AI analyzes the extracted text and returns structured product data as JSON
 - Per-file status reporting (success/error) without blocking other files
 
@@ -36,6 +49,8 @@ A full-stack web application that extracts structured product data from PDF docu
 | Backend | Python 3.10+, FastAPI, Uvicorn |
 | AI | Anthropic Claude API (claude-sonnet-4-5-20250929) |
 | PDF Parsing | pdfplumber, pytesseract (OCR), pdf2image |
+| Word / PPTX | python-docx, python-pptx |
+| HTML | BeautifulSoup 4 |
 | Excel | openpyxl |
 | Frontend | Vanilla JavaScript, HTML5, CSS3 |
 
@@ -48,8 +63,8 @@ A full-stack web application that extracts structured product data from PDF docu
 ├── .env.example            # Environment variable template
 ├── backend/
 │   ├── main.py             # FastAPI app and route definitions
+│   ├── file_parser.py      # Multi-format text extraction (PDF, DOCX, images, etc.)
 │   ├── ai_extractor.py     # Claude AI integration for product extraction
-│   ├── pdf_parser.py       # PDF text extraction with OCR fallback
 │   ├── excel_handler.py    # Excel read, write, and merge logic
 │   └── requirements.txt    # Python dependencies
 └── docs/
@@ -60,7 +75,7 @@ A full-stack web application that extracts structured product data from PDF docu
 
 - **Python 3.10+**
 - **Anthropic API key** — obtain one at https://console.anthropic.com/
-- **Tesseract OCR** (optional, for scanned PDFs) — install via your package manager:
+- **Tesseract OCR** (optional, for scanned PDFs and image files) — install via your package manager:
   ```bash
   # Ubuntu / Debian
   sudo apt install tesseract-ocr
@@ -122,8 +137,8 @@ Then open **http://localhost:8000**.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/config` | Returns whether the server has an API key configured |
-| `POST` | `/api/extract` | Upload PDFs (+ optional catalog context) and extract products via Claude AI |
+| `GET` | `/api/config` | Returns server config (API key status, supported extensions) |
+| `POST` | `/api/extract` | Upload files of any supported type and extract products via Claude AI |
 | `POST` | `/api/catalog-columns` | Upload an Excel file and retrieve its columns and sample values |
 | `POST` | `/api/merge` | Merge extracted products into an Excel catalog using a column mapping |
 | `GET` | `/api/download/{job_id}` | Download a generated Excel file |
@@ -131,8 +146,8 @@ Then open **http://localhost:8000**.
 ## Usage Workflow
 
 1. **Enter API key** — If the server doesn't have one configured, paste your key into the input field.
-2. **Upload PDFs** — Drag-and-drop or browse for one or more PDF files containing product data.
-3. **Extract** — Click "Extract Products" to send the PDFs to Claude AI for analysis. Review the extracted data in the preview table.
+2. **Upload files** — Drag-and-drop or browse for one or more files containing product data (PDF, Word, images, CSV, etc.).
+3. **Extract** — Click "Extract Products" to send the files to Claude AI for analysis. Review the extracted data in the preview table.
 4. **Upload a catalog** (optional) — Drag-and-drop an existing Excel catalog to merge into.
 5. **Map columns** — Use the column mapping interface to align extracted fields with your catalog structure. Use Auto-Match for quick mapping.
 6. **Merge & download** — Click "Merge & Download" to generate the final Excel file.
