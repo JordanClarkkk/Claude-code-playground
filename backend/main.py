@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from file_parser import extract_text, is_supported, SUPPORTED_EXTENSIONS
-from ai_extractor import extract_products, set_api_key
+from ai_extractor import extract_products, set_api_key, get_client
 from excel_handler import read_catalog, merge_products, write_catalog
 from deduplicator import deduplicate_products
 
@@ -125,7 +125,12 @@ async def extract_from_files(
             })
 
     # Deduplicate: normalise equivalent columns and merge same-product rows
-    all_products, dedup_merged = deduplicate_products(all_products)
+    # Pass the Anthropic client for LLM-powered duplicate detection
+    try:
+        client = get_client()
+    except RuntimeError:
+        client = None
+    all_products, dedup_merged = deduplicate_products(all_products, client=client)
 
     # Discover all columns across products
     columns: list[str] = []

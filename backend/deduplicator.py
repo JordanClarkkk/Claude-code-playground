@@ -1,6 +1,11 @@
 """Post-extraction deduplication: merge equivalent columns and duplicate product rows."""
 
+import json
+import logging
+import re
 from difflib import SequenceMatcher
+
+logger = logging.getLogger(__name__)
 
 # ── Synonym groups for column name normalization ──────────────────────────
 # Each set contains stripped forms (lowercase, no separators) of column names
@@ -66,6 +71,72 @@ def _normalize_id(val) -> str:
 def _similarity(a: str, b: str) -> float:
     """String similarity ratio 0..1."""
     return SequenceMatcher(None, a.lower().strip(), b.lower().strip()).ratio()
+
+
+# Pattern for model-number-like tokens: alphanumeric with optional hyphens,
+# containing at least one digit AND one letter (e.g. "WH-1000XM5", "A2882")
+_MODEL_RE = re.compile(r"[A-Za-z0-9][\w-]*[A-Za-z0-9]")
+
+
+def _extract_model_tokens(name: str) -> set[str]:
+    """Pull out tokens that look like model numbers / part identifiers."""
+    tokens = set()
+    for m in _MODEL_RE.finditer(name):
+        tok = m.group()
+        has_digit = any(c.isdigit() for c in tok)
+        has_alpha = any(c.isalpha() for c in tok)
+        if has_digit and has_alpha and len(tok) >= 3:
+            tokens.add(tok.lower().replace("-", ""))
+    return tokens
+
+
+def _significant_tokens(name: str) -> set[str]:
+    """Extract significant word tokens (>=3 chars, lowercased) from a name."""
+    words = re.split(r"[\s,;/|·•–—]+", name.lower())
+    return {w for w in words if len(w) >= 3}
+
+
+def _names_match(a: str, b: str) -> bool:
+    """Determine if two product names refer to the same product.
+
+    Uses multiple signals:
+    1. Substring containment (short name inside long name)
+    2. Shared model-number tokens (e.g. "WH-1000XM5" in both)
+    3. High token overlap (Jaccard >= 0.5 on significant words)
+    4. SequenceMatcher ratio >= 0.75
+    """
+    a = a.strip()
+    b = b.strip()
+    if not a or not b:
+        return False
+
+    al = a.lower()
+    bl = b.lower()
+
+    # 1. Substring containment: shorter name fully inside the longer one
+    short, long = (al, bl) if len(al) <= len(bl) else (bl, al)
+    if len(short) >= 4 and short in long:
+        return True
+
+    # 2. Shared model-number tokens
+    models_a = _extract_model_tokens(a)
+    models_b = _extract_model_tokens(b)
+    if models_a and models_b and (models_a & models_b):
+        return True
+
+    # 3. Significant-token Jaccard similarity
+    toks_a = _significant_tokens(a)
+    toks_b = _significant_tokens(b)
+    if toks_a and toks_b:
+        jaccard = len(toks_a & toks_b) / len(toks_a | toks_b)
+        if jaccard >= 0.5:
+            return True
+
+    # 4. SequenceMatcher (handles minor edits / typos)
+    if _similarity(a, b) >= 0.75:
+        return True
+
+    return False
 
 
 def _pick_canonical(names: list[str]) -> str:
@@ -190,12 +261,83 @@ def _merge_rows(base: dict, other: dict) -> dict:
     return merged
 
 
-def _merge_duplicate_rows(products: list[dict]) -> list[dict]:
+def _llm_find_duplicate_groups(client, products: list[dict]) -> list[list[int]]:
+    """Use Claude to identify duplicate products across languages and naming styles.
+
+    Sends all product data to Haiku in a single call. Returns a list of groups,
+    where each group is a list of 0-based product indices that are the same product.
+    """
+    if len(products) < 2:
+        return []
+
+    # Build compact product representations
+    lines = []
+    for i, p in enumerate(products):
+        compact = {k: v for k, v in p.items() if v is not None and str(v).strip()}
+        lines.append(f"{i + 1}. {json.dumps(compact, ensure_ascii=False)}")
+    product_list = "\n".join(lines)
+
+    prompt = (
+        "You are a product deduplication assistant. Below is a numbered list of products "
+        "extracted from documents. Some may refer to the same physical product but with "
+        "different names, languages, abbreviations, or levels of detail.\n\n"
+        "Identify which entries are duplicates (same product, different representation). "
+        "Return a JSON array of arrays, where each inner array contains the numbers of "
+        "products that are the same. Only include groups of 2 or more. Unique products "
+        "should NOT appear.\n\n"
+        "Rules:\n"
+        "- Same brand + same model/MPN = same product (even with extra description text)\n"
+        "- A short product name contained in a longer one = same product\n"
+        "- Translations of the same product name across languages = same product\n"
+        "- Different products from the same brand are NOT duplicates\n"
+        "- Return ONLY valid JSON — no markdown fences, no commentary\n"
+        "- If no duplicates exist, return []\n\n"
+        f"Products:\n{product_list}"
+    )
+
+    message = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=2048,
+        messages=[{"role": "user", "content": prompt}],
+    )
+
+    raw = message.content[0].text.strip()
+    # Strip markdown code fences if included
+    if raw.startswith("```"):
+        raw = raw.split("\n", 1)[1]
+    if raw.endswith("```"):
+        raw = raw.rsplit("```", 1)[0]
+    raw = raw.strip()
+
+    groups_raw = json.loads(raw)
+
+    # Convert 1-based prompt numbers to 0-based product indices
+    result = []
+    for group in groups_raw:
+        indices = [num - 1 for num in group if 1 <= num <= len(products)]
+        if len(indices) >= 2:
+            result.append(indices)
+
+    return result
+
+
+def _ids_conflict(products: list[dict], i: int, j: int, id_cols: list[str]) -> bool:
+    """True if products i and j have conflicting (different non-empty) ID values."""
+    for col in id_cols:
+        vi = str(products[i].get(col, "")).strip().lower()
+        vj = str(products[j].get(col, "")).strip().lower()
+        if vi and vj and _normalize_id(vi) != _normalize_id(vj):
+            return True
+    return False
+
+
+def _merge_duplicate_rows(products: list[dict], client=None) -> list[dict]:
     """Merge rows that represent the same product.
 
     Uses union-find to cluster products by:
       1. Matching ID values (any ID-like column)
-      2. High name/title similarity (>= 0.80) when IDs don't conflict
+      2. LLM-based matching (if client provided) — handles different languages,
+         abbreviations, name variants; falls back to heuristic name similarity
     """
     n = len(products)
     if n <= 1:
@@ -236,29 +378,33 @@ def _merge_duplicate_rows(products: list[dict]) -> list[dict]:
         for k in range(1, len(indices)):
             union(indices[0], indices[k])
 
-    # ── 2. Match by name similarity (when IDs don't conflict) ──
-    if name_cols:
+    # ── 2. Match by name (LLM-powered, with heuristic fallback) ──
+    llm_matched = False
+    if client is not None and n >= 2:
+        try:
+            llm_groups = _llm_find_duplicate_groups(client, products)
+            for group in llm_groups:
+                for k in range(1, len(group)):
+                    i, j = group[0], group[k]
+                    if find(i) != find(j) and not _ids_conflict(products, i, j, id_cols):
+                        union(i, j)
+            llm_matched = True
+            logger.info("LLM dedup identified %d duplicate groups", len(llm_groups))
+        except Exception as exc:
+            logger.warning("LLM dedup failed, falling back to heuristic: %s", exc)
+
+    if not llm_matched and name_cols:
+        # Heuristic fallback (no LLM client or LLM call failed)
         for i in range(n):
             for j in range(i + 1, n):
                 if find(i) == find(j):
-                    continue  # already grouped
-
-                # Ensure no conflicting IDs
-                has_conflict = False
-                for col in id_cols:
-                    vi = str(products[i].get(col, "")).strip().lower()
-                    vj = str(products[j].get(col, "")).strip().lower()
-                    if vi and vj and _normalize_id(vi) != _normalize_id(vj):
-                        has_conflict = True
-                        break
-                if has_conflict:
                     continue
-
-                # Check name similarity across all name-like columns
+                if _ids_conflict(products, i, j, id_cols):
+                    continue
                 for col in name_cols:
                     ni = str(products[i].get(col, "")).strip()
                     nj = str(products[j].get(col, "")).strip()
-                    if ni and nj and _similarity(ni, nj) >= 0.80:
+                    if ni and nj and _names_match(ni, nj):
                         union(i, j)
                         break
 
@@ -279,8 +425,15 @@ def _merge_duplicate_rows(products: list[dict]) -> list[dict]:
 
 # ── Public API ────────────────────────────────────────────────────────────
 
-def deduplicate_products(products: list[dict]) -> tuple[list[dict], int]:
+def deduplicate_products(products: list[dict], client=None) -> tuple[list[dict], int]:
     """Normalise columns and merge duplicate product rows.
+
+    Args:
+        products: List of product dicts to deduplicate.
+        client: Optional Anthropic client for LLM-powered duplicate detection.
+                When provided, uses Claude Haiku to identify duplicates across
+                languages and naming styles. Falls back to heuristic matching
+                if not provided or if the LLM call fails.
 
     Returns (deduplicated_products, number_of_rows_merged).
     """
@@ -293,8 +446,8 @@ def deduplicate_products(products: list[dict]) -> tuple[list[dict], int]:
     col_map = _build_column_map(products)
     products = _apply_column_map(products, col_map)
 
-    # Step 2: Merge duplicate rows
-    products = _merge_duplicate_rows(products)
+    # Step 2: Merge duplicate rows (LLM-powered when client available)
+    products = _merge_duplicate_rows(products, client=client)
 
     merged_count = original_count - len(products)
     return products, merged_count
