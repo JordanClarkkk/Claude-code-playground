@@ -38,9 +38,9 @@ PDFs with no text layer are automatically processed with OCR. Image files are al
 - Stat cards showing products extracted, files processed, and merge results
 - Responsive layout that works on mobile and desktop
 
-### API Key Management
-- Server-side key via `.env` (recommended) — never exposed to the frontend
-- Browser-provided key as fallback when no server key is configured
+### API Key
+- Enter your Anthropic API key directly in the browser UI
+- The key is sent per-request via header and never stored on the server
 
 ## Tech Stack
 
@@ -60,7 +60,6 @@ PDFs with no text layer are automatically processed with OCR. Image files are al
 .
 ├── index.html              # Single-page frontend application
 ├── run.sh                  # One-command local startup script
-├── .env.example            # Environment variable template
 ├── backend/
 │   ├── main.py             # FastAPI app and route definitions
 │   ├── file_parser.py      # Multi-format text extraction (PDF, DOCX, images, etc.)
@@ -93,15 +92,11 @@ PDFs with no text layer are automatically processed with OCR. Image files are al
 git clone https://github.com/JordanClarkkk/Claude-code-playground.git
 cd Claude-code-playground
 
-# 2. Add your API key
-cp .env.example .env
-# Edit .env and replace sk-ant-... with your real key
-
-# 3. Run
+# 2. Run
 ./run.sh
 ```
 
-The script creates a virtual environment, installs dependencies, and starts the server. Open **http://localhost:8000** in your browser.
+The script creates a virtual environment, installs dependencies, and starts the server. Open **http://localhost:8000** in your browser, then paste your Anthropic API key into the input field.
 
 ### Manual Setup
 
@@ -114,30 +109,18 @@ source backend/venv/bin/activate   # Linux / macOS
 # 2. Install dependencies
 pip install -r backend/requirements.txt
 
-# 3. Configure environment
-cp .env.example .env
-# Edit .env and add your ANTHROPIC_API_KEY
-
-# 4. Start the server
+# 3. Start the server
 cd backend
 python -m uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-Then open **http://localhost:8000**.
-
-## Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `ANTHROPIC_API_KEY` | No* | Your Anthropic API key. When set, users don't need to enter a key in the browser. |
-
-*If not set on the server, users must provide a key through the browser UI on each session.
+Then open **http://localhost:8000** and enter your Anthropic API key in the UI.
 
 ## API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/config` | Returns server config (API key status, supported extensions) |
+| `GET` | `/api/config` | Returns server config (supported file extensions) |
 | `POST` | `/api/extract` | Upload files of any supported type and extract products via Claude AI |
 | `POST` | `/api/catalog-columns` | Upload an Excel file and retrieve its columns and sample values |
 | `POST` | `/api/merge` | Merge extracted products into an Excel catalog using a column mapping |
@@ -145,7 +128,7 @@ Then open **http://localhost:8000**.
 
 ## Usage Workflow
 
-1. **Enter API key** — If the server doesn't have one configured, paste your key into the input field.
+1. **Enter API key** — Paste your Anthropic API key into the input field at the top of the page.
 2. **Upload files** — Drag-and-drop or browse for one or more files containing product data (PDF, Word, images, CSV, etc.).
 3. **Extract** — Click "Extract Products" to send the files to Claude AI for analysis. Review the extracted data in the preview table.
 4. **Upload a catalog** (optional) — Drag-and-drop an existing Excel catalog to merge into.

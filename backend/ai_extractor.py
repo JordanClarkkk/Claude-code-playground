@@ -1,7 +1,6 @@
 """Use Claude to extract structured product data from document text."""
 
 import json
-import os
 from anthropic import Anthropic
 
 _client: Anthropic | None = None
@@ -17,15 +16,8 @@ def set_api_key(api_key: str) -> None:
 
 
 def _get_client() -> Anthropic:
-    global _client
     if _client is None:
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise RuntimeError(
-                "ANTHROPIC_API_KEY environment variable is not set. "
-                "Create a .env file in the backend/ directory or export the variable."
-            )
-        _client = Anthropic(api_key=api_key)
+        raise RuntimeError("No API key has been set. Call set_api_key() first.")
     return _client
 
 
@@ -63,15 +55,15 @@ def extract_products(
             "IMPORTANT: The target Excel catalog has these columns:\n"
             f"{cols_block}\n\n"
             "You MUST map extracted data into these exact column names wherever possible.\n"
-            "For free-text content in the PDF (descriptions, features, benefits, specs, "
+            "For free-text content in the document (descriptions, features, benefits, specs, "
             "marketing copy, bullet points, etc.), intelligently determine which catalog "
             "column each piece of information belongs to based on the column name and the "
             "example values shown above.\n\n"
             "For example:\n"
-            '- A "Short Description" in the PDF might map to a catalog column called "Description" or "Short Desc"\n'
+            '- A "Short Description" might map to a catalog column called "Description" or "Short Desc"\n'
             '- "Features and Benefits" text might need to be split across "Features" and "Benefits" columns\n'
             '- Bullet-point specs might map to specific columns like "Weight", "Material", "Dimensions"\n\n'
-            "If the PDF contains data that genuinely does not fit ANY existing catalog column, "
+            "If the document contains data that genuinely does not fit ANY existing catalog column, "
             "create a new descriptive column name for it. But prefer mapping to existing columns.\n\n"
         )
     elif existing_columns:
@@ -79,7 +71,7 @@ def extract_products(
             "The existing Excel catalog has these columns:\n"
             f"{json.dumps(existing_columns)}\n\n"
             "Map extracted data to these columns where applicable. "
-            "If the PDF contains attributes that don't fit any existing column, "
+            "If the document contains attributes that don't fit any existing column, "
             "create NEW descriptive column names for them.\n\n"
         )
     else:

@@ -1,14 +1,10 @@
 """FastAPI backend for multi-format document → Excel product extraction."""
 
-import os
 import uuid
 import json
 import traceback
 from pathlib import Path
 from typing import Optional
-
-from dotenv import load_dotenv
-load_dotenv()
 
 from fastapi import FastAPI, UploadFile, File, Form, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -42,9 +38,7 @@ FRONTEND_DIR = Path(__file__).resolve().parent.parent
 @app.get("/api/config")
 async def get_config():
     """Return non-sensitive server configuration for the frontend."""
-    has_server_key = bool(os.getenv("ANTHROPIC_API_KEY"))
     return {
-        "has_server_key": has_server_key,
         "supported_extensions": sorted(SUPPORTED_EXTENSIONS),
     }
 
@@ -60,9 +54,9 @@ async def extract_from_files(
     - files: one or more files of any supported type
     - catalog_context (optional): JSON string with {columns: [...], samples: {col: [...]}}
     """
-    api_key = x_api_key or os.getenv("ANTHROPIC_API_KEY")
+    api_key = x_api_key
     if not api_key:
-        raise HTTPException(400, "No API key provided. Pass it via the UI or set ANTHROPIC_API_KEY env var.")
+        raise HTTPException(400, "No API key provided. Enter your Anthropic API key in the UI.")
     set_api_key(api_key)
 
     form = await request.form()
