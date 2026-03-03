@@ -1,5 +1,6 @@
 """Post-extraction deduplication: merge equivalent columns and duplicate product rows."""
 
+import re
 from difflib import SequenceMatcher
 
 # ── Synonym groups for column name normalization ──────────────────────────
@@ -66,6 +67,72 @@ def _normalize_id(val) -> str:
 def _similarity(a: str, b: str) -> float:
     """String similarity ratio 0..1."""
     return SequenceMatcher(None, a.lower().strip(), b.lower().strip()).ratio()
+
+
+# Pattern for model-number-like tokens: alphanumeric with optional hyphens,
+# containing at least one digit AND one letter (e.g. "WH-1000XM5", "A2882")
+_MODEL_RE = re.compile(r"[A-Za-z0-9][\w-]*[A-Za-z0-9]")
+
+
+def _extract_model_tokens(name: str) -> set[str]:
+    """Pull out tokens that look like model numbers / part identifiers."""
+    tokens = set()
+    for m in _MODEL_RE.finditer(name):
+        tok = m.group()
+        has_digit = any(c.isdigit() for c in tok)
+        has_alpha = any(c.isalpha() for c in tok)
+        if has_digit and has_alpha and len(tok) >= 3:
+            tokens.add(tok.lower().replace("-", ""))
+    return tokens
+
+
+def _significant_tokens(name: str) -> set[str]:
+    """Extract significant word tokens (>=3 chars, lowercased) from a name."""
+    words = re.split(r"[\s,;/|·•–—]+", name.lower())
+    return {w for w in words if len(w) >= 3}
+
+
+def _names_match(a: str, b: str) -> bool:
+    """Determine if two product names refer to the same product.
+
+    Uses multiple signals:
+    1. Substring containment (short name inside long name)
+    2. Shared model-number tokens (e.g. "WH-1000XM5" in both)
+    3. High token overlap (Jaccard >= 0.5 on significant words)
+    4. SequenceMatcher ratio >= 0.75
+    """
+    a = a.strip()
+    b = b.strip()
+    if not a or not b:
+        return False
+
+    al = a.lower()
+    bl = b.lower()
+
+    # 1. Substring containment: shorter name fully inside the longer one
+    short, long = (al, bl) if len(al) <= len(bl) else (bl, al)
+    if len(short) >= 4 and short in long:
+        return True
+
+    # 2. Shared model-number tokens
+    models_a = _extract_model_tokens(a)
+    models_b = _extract_model_tokens(b)
+    if models_a and models_b and (models_a & models_b):
+        return True
+
+    # 3. Significant-token Jaccard similarity
+    toks_a = _significant_tokens(a)
+    toks_b = _significant_tokens(b)
+    if toks_a and toks_b:
+        jaccard = len(toks_a & toks_b) / len(toks_a | toks_b)
+        if jaccard >= 0.5:
+            return True
+
+    # 4. SequenceMatcher (handles minor edits / typos)
+    if _similarity(a, b) >= 0.75:
+        return True
+
+    return False
 
 
 def _pick_canonical(names: list[str]) -> str:
@@ -258,7 +325,7 @@ def _merge_duplicate_rows(products: list[dict]) -> list[dict]:
                 for col in name_cols:
                     ni = str(products[i].get(col, "")).strip()
                     nj = str(products[j].get(col, "")).strip()
-                    if ni and nj and _similarity(ni, nj) >= 0.80:
+                    if ni and nj and _names_match(ni, nj):
                         union(i, j)
                         break
 
